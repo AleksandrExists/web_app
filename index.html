@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Working Title</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Working Title</h1>
+
+    <div id="auth-section" class="auth-section">
+        <h2>Вход</h2>
+        <input type="email" id="email" placeholder="Введите ваш email" />
+        <button id="send-magic-link">Отправить Magic Link</button>
+        <p id="auth-message"></p>
+    </div>
+
+    <div id="tasks-section" class="hidden">
+        <h2>Ваши задачи</h2>
+        <button id="logout-btn">Выйти</button>
+        <div id="tasks-list"></div>
+    </div>
+
+    <script src="app.js" type="module"></script>
+</body>
+</html>
