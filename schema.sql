@@ -11,8 +11,8 @@ CREATE TABLE users (
 );
 
 -- Справочник типов задач
-DROP TABLE IF EXISTS _dict_type CASCADE;
-CREATE TABLE _dict_type (
+DROP TABLE IF EXISTS _dict_types CASCADE;
+CREATE TABLE _dict_types (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE
 );
@@ -46,7 +46,7 @@ CREATE TABLE tasks (
         ON DELETE CASCADE,
     CONSTRAINT fk_task_type
         FOREIGN KEY (type_id)
-        REFERENCES _dict_type(id)
+        REFERENCES _dict_types(id)
         ON DELETE RESTRICT,
 
     -- Уникальность названия для пользователя
@@ -131,7 +131,7 @@ CREATE VIEW days with (security_invoker = on) AS (
 
 -- Включаем RLS для таблиц
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE _dict_type ENABLE ROW LEVEL SECURITY;
+ALTER TABLE _dict_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE data ENABLE ROW LEVEL SECURITY;
 
@@ -240,7 +240,7 @@ CREATE OR REPLACE TRIGGER update_tasks
     EXECUTE FUNCTION tasks_update_trigger_func();
 
 -- Добавление типов задач
-INSERT INTO _dict_type
+INSERT INTO _dict_types
 (name)
 VALUES
     ('Цель'),

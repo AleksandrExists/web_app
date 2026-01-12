@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-import { SUPABASE_CONFIG } from './config.prod.js';
+import { SUPABASE_CONFIG } from './database/config/config.js';
 import { log } from './Logger.js';
 
 
