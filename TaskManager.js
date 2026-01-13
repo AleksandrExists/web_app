@@ -4,6 +4,7 @@ export class TaskManager {
     constructor(authManager, tasksListElement) {
         this.authManager = authManager;
         this.tasksListElement = tasksListElement;
+        this.tasksSection = document.getElementById('tasks-section');
     }
 
     async ensureUserProfile() {
@@ -54,5 +55,23 @@ export class TaskManager {
         log.out();
     }
 
+    hideTasksSection() {
+        log.in();
+        this.tasksSection.classList.add('hidden');
+        this.tasksListElement.innerHTML = '';
+        log.out();
+    }
 
+    async showTasks() {
+        log.in();
+        this.tasksSection.classList.remove('hidden');
+        await this.ensureUserProfile();
+        try {
+            const tasks = await this.loadTasks();
+            this.renderTasks(tasks);
+        } catch (error) {
+            this.tasksListElement.innerHTML = '<p>Ошибка загрузки задач: ' + error.message + '</p>';
+        }
+        log.out();
+    }
 }

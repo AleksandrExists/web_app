@@ -10,10 +10,14 @@ export class App {
         this.emailInput = document.getElementById('email');
         this.sendMagicLinkBtn = document.getElementById('send-magic-link');
         this.authMessage = document.getElementById('auth-message');
-        this.logoutBtn = document.getElementById('logout-btn');
 
         this.authManager = new AuthManager();
-        this.contentManager = new ContentManager(this.authManager);
+        this.contentManager = new ContentManager(
+            this.authManager,
+            this.onReportsClick.bind(this),
+            this.onAddClick.bind(this),
+            this.onLogoutClick.bind(this)
+        );
     }
 
     async init() {
@@ -54,16 +58,6 @@ export class App {
                 this.authMessage.textContent = 'Ошибка: ' + error.message;
             }
         });
-
-        this.logoutBtn.addEventListener('click', async () => {
-            try {
-                await this.authManager.logout();
-                this.showAuthSection();
-                this.contentManager.hideContent();
-            } catch (error) {
-                log.error('Ошибка при выходе:', error);
-            }
-        });
     }
 
     showAuthSection() {
@@ -74,5 +68,25 @@ export class App {
     showContentSection() {
         this.contentSection.classList.remove('hidden');
         this.authSection.classList.add('hidden');
+    }
+
+    onReportsClick() {
+        log.debug('Reports functionality not implemented yet');
+        // TODO: Implement reports functionality
+    }
+
+    onAddClick() {
+        log.debug('Add habit functionality not implemented yet');
+        // TODO: Implement add habit functionality
+    }
+
+    async onLogoutClick() {
+        try {
+            await this.authManager.logout();
+            this.showAuthSection();
+            this.contentManager.hideContent();
+        } catch (error) {
+            log.error('Ошибка при выходе:', error);
+        }
     }
 }
