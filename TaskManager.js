@@ -54,30 +54,5 @@ export class TaskManager {
         log.out();
     }
 
-    showTasksSection(authSection, tasksSection) {
-        log.in();
-        authSection.classList.add('hidden');
-        tasksSection.classList.remove('hidden');
-        log.out();
-    }
 
-    hideTasksSection(authSection, tasksSection) {
-        log.in();
-        tasksSection.classList.add('hidden');
-        authSection.classList.remove('hidden');
-        log.out();
-    }
-
-    async showTasks(authSection, tasksSection) {
-        log.in();
-        this.showTasksSection(authSection, tasksSection);
-        await this.ensureUserProfile();
-        try {
-            const tasks = await this.loadTasks();
-            this.renderTasks(tasks);
-        } catch (error) {
-            this.tasksListElement.innerHTML = '<p>Ошибка загрузки задач: ' + error.message + '</p>';
-        }
-        log.out();
-    }
 }

@@ -16,15 +16,8 @@ export class AuthManager {
 
     async onAuthStateChange(callback) {
         log.in();
-        log.debug('auth');
-        log.debug('event: ' || event);
-        log.debug('session:' || session);
-        log.debug(callback);
         this.supabase.auth.onAuthStateChange((event, session) => {
-            log.debug('supabase');
-            log.debug('event: ' || event);
-            log.debug('session:' || session);
-            log.debug(callback);
+            log.debug('supabase auth event:', event, session);
             callback(event, session);
         });
         log.out();

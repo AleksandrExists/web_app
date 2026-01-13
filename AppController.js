@@ -25,8 +25,6 @@ export class App {
         }
 
         // Listen for auth changes
-        log.debug('event: ' || event);
-        log.debug('session: ' || session);
         this.authManager.onAuthStateChange((event, session) => {
             log.in();
             log.debug('app');
@@ -73,16 +71,8 @@ export class App {
         this.authSection.classList.remove('hidden');
     }
 
-    hideAuthSection() {
-        this.authSection.classList.add('hidden');
-    }
-
     showContentSection() {
         this.contentSection.classList.remove('hidden');
         this.authSection.classList.add('hidden');
-    }
-
-    hideContentSection() {
-        this.contentSection.classList.add('hidden');
     }
 }
