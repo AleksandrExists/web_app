@@ -6,6 +6,7 @@ import { log } from './Logger.js';
 export class App {
     constructor() {
         this.authSection = document.getElementById('auth-section');
+        this.contentSection = document.getElementById('content-section');
         this.emailInput = document.getElementById('email');
         this.sendMagicLinkBtn = document.getElementById('send-magic-link');
         this.authMessage = document.getElementById('auth-message');
@@ -68,6 +69,7 @@ export class App {
     }
 
     showAuthSection() {
+        this.contentSection.classList.add('hidden');
         this.authSection.classList.remove('hidden');
     }
 
@@ -76,10 +78,11 @@ export class App {
     }
 
     showContentSection() {
+        this.contentSection.classList.remove('hidden');
         this.authSection.classList.add('hidden');
     }
 
     hideContentSection() {
-        // content-section always visible, hide sub-sections via ContentManager
+        this.contentSection.classList.add('hidden');
     }
 }
