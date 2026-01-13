@@ -1,6 +1,5 @@
 import { AuthManager } from './AuthManager.js';
 import { ContentManager } from './ContentManager.js';
-// import { TaskManager } from './TaskManager.js';
 import { log } from './Logger.js';
 
 export class App {

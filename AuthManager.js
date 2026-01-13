@@ -30,12 +30,12 @@ export class AuthManager {
         log.out();
     }
 
-    async getCurrentUser() {
-        log.in();
-        const result = await this.supabase.auth.getUser();
-        log.out();
-        return result;
-    }
+    // async getCurrentUser() {
+    //     log.in();
+    //     const result = await this.supabase.auth.getUser();
+    //     log.out();
+    //     return result;
+    // }
 
     async logout() {
         log.in();
