@@ -1,26 +1,26 @@
 import { AuthManager } from './AuthManager.js';
-import { TaskManager } from './TaskManager.js';
+import { ContentManager } from './ContentManager.js';
+// import { TaskManager } from './TaskManager.js';
 import { log } from './Logger.js';
 
 export class App {
     constructor() {
         this.authSection = document.getElementById('auth-section');
-        this.tasksSection = document.getElementById('tasks-section');
         this.emailInput = document.getElementById('email');
         this.sendMagicLinkBtn = document.getElementById('send-magic-link');
         this.authMessage = document.getElementById('auth-message');
-        this.tasksList = document.getElementById('tasks-list');
         this.logoutBtn = document.getElementById('logout-btn');
 
         this.authManager = new AuthManager();
-        this.taskManager = new TaskManager(this.authManager, this.tasksList);
+        this.contentManager = new ContentManager(this.authManager);
     }
 
     async init() {
         // Check if user is already authenticated
         const session = await this.authManager.checkSession();
         if (session) {
-            this.taskManager.showTasks(this.authSection, this.tasksSection);
+            this.showContentSection();
+            this.contentManager.showContent();
         }
 
         // Listen for auth changes
@@ -32,10 +32,11 @@ export class App {
             log.debug('event: ' || event);
             log.debug('session: ' || session);
             if (event === 'SIGNED_IN' && session) {
-                this.taskManager.showTasks(this.authSection, this.tasksSection);
+                this.showContentSection();
+                this.contentManager.showContent();
             } else if (event === 'SIGNED_OUT') {
-                this.taskManager.hideTasksSection(this.authSection, this.tasksSection);
-                this.tasksList.innerHTML = '';
+                this.showAuthSection();
+                this.contentManager.hideContent();
             }
             log.out();
         });
@@ -58,11 +59,27 @@ export class App {
         this.logoutBtn.addEventListener('click', async () => {
             try {
                 await this.authManager.logout();
-                this.taskManager.hideTasksSection(this.authSection, this.tasksSection);
-                this.tasksList.innerHTML = '';
+                this.showAuthSection();
+                this.contentManager.hideContent();
             } catch (error) {
                 log.error('Ошибка при выходе:', error);
             }
         });
+    }
+
+    showAuthSection() {
+        this.authSection.classList.remove('hidden');
+    }
+
+    hideAuthSection() {
+        this.authSection.classList.add('hidden');
+    }
+
+    showContentSection() {
+        this.authSection.classList.add('hidden');
+    }
+
+    hideContentSection() {
+        // content-section always visible, hide sub-sections via ContentManager
     }
 }
