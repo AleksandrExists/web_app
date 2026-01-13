@@ -5,9 +5,7 @@ import { log } from './Logger.js';
 
 export class ContentManager {
     constructor(authManager, onReportsClick, onAddClick, onLogoutClick) {
-        this.tasksList = document.getElementById('tasks-list');
-
-        this.taskManager = new TaskManager(authManager, this.tasksList);
+        this.taskManager = new TaskManager(authManager);
         this.daysManager = new DaysManager();
         this.bottomNavManager = new BottomNavManager(onReportsClick, onAddClick, onLogoutClick);
     }

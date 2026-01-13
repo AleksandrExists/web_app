@@ -1,9 +1,8 @@
 import { log } from './Logger.js';
 
 export class TaskManager {
-    constructor(authManager, tasksListElement) {
+    constructor(authManager) {
         this.authManager = authManager;
-        this.tasksListElement = tasksListElement;
         this.tasksSection = document.getElementById('tasks-section');
     }
 
@@ -34,9 +33,9 @@ export class TaskManager {
 
     renderTasks(tasks) {
         log.in();
-        this.tasksListElement.innerHTML = '';
+        this.tasksSection.innerHTML = '';
         if (tasks.length === 0) {
-            this.tasksListElement.innerHTML = '<p>У вас нет задач.</p>';
+            this.tasksSection.innerHTML = '<p>У вас нет задач.</p>';
         } else {
             tasks.forEach(task => {
                 const taskDiv = document.createElement('div');
@@ -49,7 +48,7 @@ export class TaskManager {
                     <p>Дата начала: ${task.begin_date}</p>
                     <p>Дата окончания: ${task.end_date}</p>
                 `;
-                this.tasksListElement.appendChild(taskDiv);
+                this.tasksSection.appendChild(taskDiv);
             });
         }
         log.out();
@@ -58,7 +57,7 @@ export class TaskManager {
     hideTasksSection() {
         log.in();
         this.tasksSection.classList.add('hidden');
-        this.tasksListElement.innerHTML = '';
+        this.tasksSection.innerHTML = '';
         log.out();
     }
 
@@ -70,7 +69,7 @@ export class TaskManager {
             const tasks = await this.loadTasks();
             this.renderTasks(tasks);
         } catch (error) {
-            this.tasksListElement.innerHTML = '<p>Ошибка загрузки задач: ' + error.message + '</p>';
+            this.tasksSection.innerHTML = '<p>Ошибка загрузки задач: ' + error.message + '</p>';
         }
         log.out();
     }
