@@ -41,6 +41,13 @@ body {
     margin: 10px 0;
 }
 
+.task-input {
+    margin-top: 5px;
+    padding: 5px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
 .day-button {
     margin: 5px;
     padding: 10px;

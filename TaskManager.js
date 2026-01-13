@@ -35,7 +35,7 @@ export class TaskManager {
         return tasks;
     }
 
-    renderTasksForDate(tasks) {
+    renderTasksForDate(tasks, date) {
         log.in();
         this.tasksSection.innerHTML = '';
         if (tasks.length === 0) {
@@ -44,11 +44,34 @@ export class TaskManager {
             tasks.forEach(task => {
                 const taskDiv = document.createElement('div');
                 taskDiv.className = 'task';
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = '0.01';
+                input.value = task.value || '';
+                input.placeholder = 'Введите значение';
+                input.className = 'task-input';
+                input.dataset.taskId = task.task_id;
+
+                input.addEventListener('change', async (e) => {
+                    const value = parseFloat(e.target.value) || null;
+                    try {
+                        await this.updateTaskValue(date, task.task_id, value);
+                        // Перезагрузить задачи для обновления расчетов
+                        const updatedTasks = await this.loadTasksForDate(date);
+                        this.renderTasksForDate(updatedTasks, date);
+                    } catch (error) {
+                        console.error('Ошибка сохранения:', error);
+                        alert('Ошибка сохранения данных');
+                    }
+                });
+
                 taskDiv.innerHTML = `
                     <h3>${task.name}</h3>
                     <p>Цель: ${task.target_value} к ${task.end_date}</p>
                     <p>Сейчас: ${task.fact_value}, темп: ${task.pace}%</p>
                 `;
+                taskDiv.appendChild(input);
                 this.tasksSection.appendChild(taskDiv);
             });
         }
@@ -62,13 +85,25 @@ export class TaskManager {
         log.out();
     }
 
+    async updateTaskValue(date, taskId, value) {
+        log.in();
+        const dateString = date.toISOString().split('T')[0];
+        const { error } = await this.authManager.supabase
+            .from('data')
+            .update({ value: value || null })
+            .eq('date', dateString)
+            .eq('task_id', taskId);
+        if (error) throw error;
+        log.out();
+    }
+
     async showTasksForDate(date) {
         log.in();
         this.tasksSection.classList.remove('hidden');
         await this.ensureUserProfile();
         try {
             const tasks = await this.loadTasksForDate(date);
-            this.renderTasksForDate(tasks);
+            this.renderTasksForDate(tasks, date);
         } catch (error) {
             this.tasksSection.innerHTML = '<p>Ошибка загрузки задач: ' + error.message + '</p>';
         }
