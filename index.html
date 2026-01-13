@@ -5,23 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Working Title</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="app.js" type="module"></script>
 </head>
 <body>
-    <h1>Working Title</h1>
+    <div class="container">
 
-    <div id="auth-section" class="auth-section">
-        <h2>Вход</h2>
-        <input type="email" id="email" placeholder="Введите ваш email" />
-        <button id="send-magic-link">Отправить Magic Link</button>
-        <p id="auth-message"></p>
+        <!-- Шапка -->
+        <header class="header">
+            <h1>Working Title</h1>
+        </header>
+
+        <main class="app-section" id="app-section">
+
+            <!-- Аутентификация -->
+            <section class="auth-section" id="auth-section">
+                <h2>Вход</h2>
+                <form id="auth-form">
+                    <input type="email" id="email" placeholder="Введите ваш email" />
+                    <button id="send-magic-link">Отправить Magic Link</button>
+                    <p id="auth-message"></p>
+                </form>
+            </section>
+
+            <!-- Содержимое базы -->
+            <section class="content-section" id="content-section">
+
+                <!-- Дни недели -->
+                <section class="days-section hidden" id="days-section">
+                    <!-- Кнопки дней будут добавлены -->
+                </section>
+
+                <section class="tasks-section hidden" id="tasks-section" >
+                    <!-- <h2>Ваши задачи</h2>
+                    <button id="logout-btn">Выйти</button> -->
+                    <div id="tasks-list"></div>
+                </section>
+
+                <!-- Нижняя панель -->
+                <nav class="bottom-section hidden">
+                    <button class="nav-button reports" id="reports-btn">
+                        Отчеты
+                    </button>
+                    <button class="nav-button add" id="add-habit-btn">
+                        Добавить
+                    </button>
+                    <button class="nav-button logout" id="logout-btn">
+                        Выйти
+                    </button>
+                </nav>
+            </section>
+        </main>
     </div>
-
-    <div id="tasks-section" class="hidden">
-        <h2>Ваши задачи</h2>
-        <button id="logout-btn">Выйти</button>
-        <div id="tasks-list"></div>
-    </div>
-
-    <script src="app.js" type="module"></script>
 </body>
 </html>

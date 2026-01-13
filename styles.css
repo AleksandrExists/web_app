@@ -1,4 +1,46 @@
-body { font-family: Arial, sans-serif; margin: 20px; }
-.auth-section { margin-bottom: 20px; }
-.task { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
-.hidden { display: none; }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: sans-serif;
+    background-color: #6595ec;
+    padding: 16px;
+    overflow-x: hidden;
+}
+
+.header {
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.app-section {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 80px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    min-height: 300px;
+}
+
+.auth-section {
+    margin-bottom: 20px;
+}
+
+.task {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+.hidden {
+    display: none;
+}
