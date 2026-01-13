@@ -25,7 +25,7 @@ export class TaskManager {
 
     async loadTasks() {
         log.in();
-        const { data: tasks, error } = await this.authManager.supabase.from('tasks').select('*');
+        const { data: tasks, error } = await this.authManager.supabase.from('days').select('*');
         if (error) throw error;
         log.out();
         return tasks;
@@ -42,11 +42,8 @@ export class TaskManager {
                 taskDiv.className = 'task';
                 taskDiv.innerHTML = `
                     <h3>${task.name}</h3>
-                    <p>Тип: ${task.type_id}</p>
-                    <p>Начальное значение: ${task.start_value}</p>
-                    <p>Целевое значение: ${task.target_value}</p>
-                    <p>Дата начала: ${task.begin_date}</p>
-                    <p>Дата окончания: ${task.end_date}</p>
+                    <p>Цель: ${task.target_value} к ${task.end_date}</p>
+                    <p>Сейчас: ${task.fact_value}, темп: ${task.pace}</p>
                 `;
                 this.tasksSection.appendChild(taskDiv);
             });

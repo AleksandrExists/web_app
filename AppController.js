@@ -43,7 +43,9 @@ export class App {
             log.out();
         });
 
-        this.sendMagicLinkBtn.addEventListener('click', async () => {
+        document.getElementById('auth-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            log.in();
             const email = this.emailInput.value.trim();
             if (!email) {
                 this.authMessage.textContent = 'Введите email';
@@ -56,6 +58,7 @@ export class App {
             } catch (error) {
                 this.authMessage.textContent = 'Ошибка: ' + error.message;
             }
+            log.out();
         });
     }
 

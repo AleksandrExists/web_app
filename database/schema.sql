@@ -118,6 +118,7 @@ CREATE VIEW days with (security_invoker = on) AS (
         WINDOW w_tasks AS (PARTITION BY task_id ORDER BY date)
         )
     SELECT *,
+        fact_change + start_value AS fact_value,
         fact_change / NULLIF(date - begin_date + 1, 0) AS avg_change,
         target_change - fact_change AS remaining_change,
         --Ожидаемое значение на дату дедлайна
