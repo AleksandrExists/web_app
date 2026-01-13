@@ -3,17 +3,12 @@ import { log } from './Logger.js';
 
 export class AuthManager {
     constructor() {
-        this.supabasePromise = supabase;
-    }
-
-    async getSupabase() {
-        return await this.supabasePromise;
+        this.supabase = supabase;
     }
 
     async checkSession() {
         log.in();
-        const supabaseClient = await this.getSupabase();
-        const { data: { session } } = await supabaseClient.auth.getSession();
+        const { data: { session } } = await this.supabase.auth.getSession();
         log.debug(session);
         log.out();
         return session;
@@ -25,8 +20,7 @@ export class AuthManager {
         log.debug('event: ' || event);
         log.debug('session:' || session);
         log.debug(callback);
-        const supabaseClient = await this.getSupabase();
-        supabaseClient.auth.onAuthStateChange((event, session) => {
+        this.supabase.auth.onAuthStateChange((event, session) => {
             log.debug('supabase');
             log.debug('event: ' || event);
             log.debug('session:' || session);
@@ -38,24 +32,21 @@ export class AuthManager {
 
     async sendMagicLink(email) {
         log.in();
-        const supabaseClient = await this.getSupabase();
-        const { error } = await supabaseClient.auth.signInWithOtp({ email });
+        const { error } = await this.supabase.auth.signInWithOtp({ email });
         if (error) throw error;
         log.out();
     }
 
     async getCurrentUser() {
         log.in();
-        const supabaseClient = await this.getSupabase();
-        const result = await supabaseClient.auth.getUser();
+        const result = await this.supabase.auth.getUser();
         log.out();
         return result;
     }
 
     async logout() {
         log.in();
-        const supabaseClient = await this.getSupabase();
-        const { error } = await supabaseClient.auth.signOut();
+        const { error } = await this.supabase.auth.signOut();
         if (error) throw error;
         log.out();
     }

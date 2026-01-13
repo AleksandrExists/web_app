@@ -8,14 +8,13 @@ export class TaskManager {
 
     async ensureUserProfile() {
         log.in();
-        const supabaseClient = await this.authManager.getSupabase();
-        const { data: { user } } = await supabaseClient.auth.getUser();
+        const { data: { user } } = await this.authManager.supabase.auth.getUser();
         log.debug({ user });
         if (user) {
-            const { data: existingUser } = await supabaseClient.from('users').select('id').single();
+            const { data: existingUser } = await this.authManager.supabase.from('users').select('id').single();
             log.debug(existingUser);
             if (!existingUser) {
-                await supabaseClient.from('users').insert({
+                await this.authManager.supabase.from('users').insert({
                     id: user.id,
                     email: user.email
                 });
@@ -26,8 +25,7 @@ export class TaskManager {
 
     async loadTasks() {
         log.in();
-        const supabaseClient = await this.authManager.getSupabase();
-        const { data: tasks, error } = await supabaseClient.from('tasks').select('*');
+        const { data: tasks, error } = await this.authManager.supabase.from('tasks').select('*');
         if (error) throw error;
         log.out();
         return tasks;

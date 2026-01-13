@@ -4,17 +4,13 @@ const isDev = window.location.hostname === 'localhost' || window.location.hostna
 
 let SUPABASE_CONFIG;
 
-async function initializeSupabase() {
-    if (isDev) {
-        const { SUPABASE_CONFIG: devConfig } = await import('./config/config.dev.js');
-        SUPABASE_CONFIG = devConfig;
-    } else {
-        const { SUPABASE_CONFIG: prodConfig } = await import('./config/config.prod.js');
-        SUPABASE_CONFIG = prodConfig;
-    }
-
-    return createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY);
+if (isDev) {
+    const { SUPABASE_CONFIG: devConfig } = await import('./config/config.dev.js');
+    SUPABASE_CONFIG = devConfig;
+} else {
+    const { SUPABASE_CONFIG: prodConfig } = await import('./config/config.prod.js');
+    SUPABASE_CONFIG = prodConfig;
 }
 
-// Экспортируем Promise, который разрешится в клиент Supabase
-export const supabase = initializeSupabase();
+// Экспортируем готовый клиент Supabase
+export const supabase = createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY);
