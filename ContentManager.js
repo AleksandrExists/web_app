@@ -6,16 +6,17 @@ import { log } from './Logger.js';
 export class ContentManager {
     constructor(authManager, onReportsClick, onAddClick, onLogoutClick) {
         this.taskManager = new TaskManager(authManager);
-        this.daysManager = new DaysManager();
+        this.daysManager = new DaysManager((date) => this.selectDate(date));
         this.bottomNavManager = new BottomNavManager(onReportsClick, onAddClick, onLogoutClick);
+        this.selectedDate = new Date();
     }
 
     showContent() {
         log.in();
         // Показать дни недели
         this.showDays();
-        // Показать задачи
-        this.showTasks();
+        // Выбрать текущий день
+        this.daysManager.selectDay(this.selectedDate);
         // Показать нижнюю панель
         this.showBottomNav();
         log.out();
@@ -37,9 +38,10 @@ export class ContentManager {
         this.daysManager.hideDays();
     }
 
-    async showTasks() {
+    selectDate(date) {
         log.in();
-        this.taskManager.showTasks();
+        this.selectedDate = date;
+        this.taskManager.showTasksForDate(date);
         log.out();
     }
 

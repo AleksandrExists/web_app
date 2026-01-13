@@ -41,6 +41,19 @@ body {
     margin: 10px 0;
 }
 
+.day-button {
+    margin: 5px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background: white;
+    cursor: pointer;
+}
+
+.day-button.selected {
+    background-color: #6595ec;
+    color: white;
+}
+
 .hidden {
     display: none;
 }

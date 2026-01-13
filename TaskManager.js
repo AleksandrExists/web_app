@@ -23,19 +23,23 @@ export class TaskManager {
         log.out();
     }
 
-    async loadTasks() {
+    async loadTasksForDate(date) {
         log.in();
-        const { data: tasks, error } = await this.authManager.supabase.from('days').select('*');
+        const dateString = date.toISOString().split('T')[0];
+        const { data: tasks, error } = await this.authManager.supabase
+            .from('days')
+            .select('*')
+            .eq('date', dateString);
         if (error) throw error;
         log.out();
         return tasks;
     }
 
-    renderTasks(tasks) {
+    renderTasksForDate(tasks) {
         log.in();
         this.tasksSection.innerHTML = '';
         if (tasks.length === 0) {
-            this.tasksSection.innerHTML = '<p>У вас нет задач.</p>';
+            this.tasksSection.innerHTML = '<p>У вас нет задач на этот день.</p>';
         } else {
             tasks.forEach(task => {
                 const taskDiv = document.createElement('div');
@@ -43,7 +47,7 @@ export class TaskManager {
                 taskDiv.innerHTML = `
                     <h3>${task.name}</h3>
                     <p>Цель: ${task.target_value} к ${task.end_date}</p>
-                    <p>Сейчас: ${task.fact_value}, темп: ${task.pace}</p>
+                    <p>Сейчас: ${task.fact_value}, темп: ${task.pace}%</p>
                 `;
                 this.tasksSection.appendChild(taskDiv);
             });
@@ -58,13 +62,13 @@ export class TaskManager {
         log.out();
     }
 
-    async showTasks() {
+    async showTasksForDate(date) {
         log.in();
         this.tasksSection.classList.remove('hidden');
         await this.ensureUserProfile();
         try {
-            const tasks = await this.loadTasks();
-            this.renderTasks(tasks);
+            const tasks = await this.loadTasksForDate(date);
+            this.renderTasksForDate(tasks);
         } catch (error) {
             this.tasksSection.innerHTML = '<p>Ошибка загрузки задач: ' + error.message + '</p>';
         }
