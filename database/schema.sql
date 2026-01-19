@@ -14,7 +14,7 @@
 DROP TABLE IF EXISTS _dict_types CASCADE;
 CREATE TABLE _dict_types (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
+    name VARCHAR(32) NOT NULL UNIQUE
 );
 
 -- Добавление типов задач
@@ -37,19 +37,19 @@ CREATE TABLE items (
     weight DECIMAL(5, 2),
     type_id INTEGER NOT NULL,
     begin_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    end_date DATE, --показывать всегда, но при type_id = 1 not null
+    end_date DATE,
     duration INTEGER GENERATED ALWAYS AS 
         (CASE WHEN end_date IS NULL THEN NULL ELSE ((end_date - begin_date) + 1) END) STORED,
 
     allow_overcompletion BOOLEAN NOT NULL DEFAULT TRUE,
-    negative BOOLEAN, --при tasks не показывать, при type_id = 2 not null
-    add_to_sum BOOLEAN, --при habit не показывать, будет NULL; при type_id = 1 not null
-    start_value DECIMAL(10, 2), --при habit не показывать, будет NULL; при task считывать TODO добавить обработку NULL
+    negative BOOLEAN,
+    add_to_sum BOOLEAN,
+    start_value DECIMAL(10, 2),
     target_value DECIMAL(10, 2) NOT NULL,
     target_change DECIMAL(10, 2) GENERATED ALWAYS AS
-        (CASE WHEN type_id = 1 THEN (target_value - start_value) ELSE NULL END) STORED,
+        (CASE WHEN type_id = 1 THEN (target_value - COALESCE(start_value, 0)) ELSE NULL END) STORED,
 
-    interval_type interval_type, --при tasks не показывать, при type_id = 2 not null
+    interval_type interval_type,
     interval_value DECIMAL(10, 6) GENERATED ALWAYS AS (
         CASE WHEN type_id = 1 THEN NULL ELSE
             CASE interval_type
@@ -155,7 +155,7 @@ CREATE VIEW days with (security_invoker = on) AS (
                 WHEN add_to_sum THEN
                     COALESCE(SUM(data.value) OVER w_items, 0)
                 ELSE
-                    COALESCE(last_non_null_value(data.value) OVER w_items - items.start_value, 0)
+                    last_non_null_value(data.value) OVER w_items - COALESCE(start_value, 0)
             END AS fact_change
         FROM
             data JOIN

@@ -67,11 +67,20 @@ export class ItemManager {
                         alert('Ошибка сохранения данных');
                     }
                 });
+                if (item.type_id === 1) {
+                    itemDiv.innerHTML = `
+                        <h3>${item.name}</h3>
+                        <p>Цель: ${item.target_value} к ${item.end_date}</p>
+                        <p>Сейчас: ${item.fact_value ?? 0} (${item.completion ?? '0%'}), темп: ${item.pace ?? '0%'}</p>
 
-                itemDiv.innerHTML = `
-                    <h3>${item.name}</h3>
-                    <p>Цель: ${item.target_value}</p>
-                `;
+                    `;
+                } else {
+                    itemDiv.innerHTML = `
+                        <h3>${item.name}</h3>
+                        <p>Цель: ${item.target_value} in ${item.interval_type}</p>
+                    `;
+                }
+
                 itemDiv.appendChild(input);
                 this.itemsSection.appendChild(itemDiv);
             });
