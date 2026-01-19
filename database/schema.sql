@@ -119,6 +119,22 @@ CREATE OR REPLACE AGGREGATE last_non_null_value(anyelement) (
     STYPE = anyelement
 );
 
+-- Функция для вставки null-записей за день
+CREATE OR REPLACE FUNCTION insert_null_data_for_date(selected_date DATE)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    INSERT INTO data (date, item_id, value)
+    SELECT selected_date, id, NULL
+    FROM items
+    WHERE begin_date <= selected_date
+      AND (end_date IS NULL OR end_date >= selected_date)
+    ON CONFLICT (date, item_id) DO NOTHING;
+END;
+$$;
+
 -- View для отображения данных с расчетами
 DROP VIEW IF EXISTS days CASCADE;
 CREATE VIEW days with (security_invoker = on) AS (

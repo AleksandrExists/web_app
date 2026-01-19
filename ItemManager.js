@@ -28,10 +28,8 @@ export class ItemManager {
         const dateString = date.toISOString().split('T')[0];
         const { data: items, error } = await this.authManager.supabase
             .from('days')
-            .select('*');
-            // .lte('begin_date', dateString)
-            // .or(`end_date.is.null,end_date.gte.${dateString}`)
-            // .or(`date.is.null,date.eq.${dateString}`);
+            .select('*')
+            .eq('date', dateString);
         if (error) throw error;
         log.out();
         return items;
@@ -101,11 +99,22 @@ export class ItemManager {
         log.out();
     }
 
+    async insertNullRecordsForDate(date) {
+        log.in();
+        const dateString = date.toISOString().split('T')[0];
+        const { error } = await this.authManager.supabase.rpc('insert_null_data_for_date', {
+            selected_date: dateString
+        });
+        if (error) throw error;
+        log.out();
+    }
+
     async showItemsForDate(date) {
         log.in();
         this.itemsSection.classList.remove('hidden');
         await this.ensureUserProfile();
         try {
+            await this.insertNullRecordsForDate(date);
             const items = await this.loadItemsForDate(date);
             this.renderItemsForDate(items, date);
         } catch (error) {
