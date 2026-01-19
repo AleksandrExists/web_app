@@ -55,7 +55,8 @@ export class ItemManager {
                 input.dataset.itemId = item.item_id;
 
                 input.addEventListener('change', async (e) => {
-                    const value = parseFloat(e.target.value) || null;
+                    const num = parseFloat(e.target.value);
+                    const value = isNaN(num) ? null : num;
                     try {
                         await this.updateItemValue(date, item.item_id, value);
                         // Перезагрузить задачи для обновления расчетов
@@ -103,7 +104,7 @@ export class ItemManager {
             .upsert({
                 date: dateString,
                 item_id: itemId,
-                value: value || null
+                value: value
             }, { onConflict: 'date,item_id' });
         if (error) throw error;
         log.out();
