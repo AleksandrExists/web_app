@@ -27,13 +27,10 @@ export class ItemManager {
         log.in();
         const dateString = date.toISOString().split('T')[0];
         const { data: items, error } = await this.authManager.supabase
-            .from('items')
-            .select('*, data!left(value)')
-            .eq('data.date', dateString)
-            .lte('begin_date', dateString)
-            .or(`end_date.is.null,end_date.gte.${dateString}`);
+            .from('days')
+            .select('*')
+            .eq('date', dateString);
         if (error) throw error;
-        log.debug(items);
         log.out();
         return items;
     }
@@ -51,15 +48,15 @@ export class ItemManager {
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.step = '0.01';
-                input.value = item.data?.[0]?.value ?? '';
+                input.value = item.value ?? '';
                 input.placeholder = 'Введите значение';
                 input.className = 'item-input';
-                input.dataset.itemId = item.id;
+                input.dataset.itemId = item.item_id;
 
                 input.addEventListener('change', async (e) => {
                     const value = parseFloat(e.target.value) || null;
                     try {
-                        await this.updateItemValue(date, item.id, value);
+                        await this.updateItemValue(date, item.item_id, value);
                         // Перезагрузить задачи для обновления расчетов
                         const updatedItems = await this.loadItemsForDate(date);
                         this.renderItemsForDate(updatedItems, date);
@@ -68,8 +65,6 @@ export class ItemManager {
                         alert('Ошибка сохранения данных');
                     }
                 });
-                log.debug('/***********************************');
-                log.debug(item);
                 if (item.type_id === 1) {
                     itemDiv.innerHTML = `
                         <h3>${item.name}</h3>
@@ -113,6 +108,16 @@ export class ItemManager {
         log.out();
     }
 
+    async insertNullRecordsForDate(date) {
+        log.in();
+        const dateString = date.toISOString().split('T')[0];
+        const { error } = await this.authManager.supabase.rpc('insert_null_data_for_date', {
+            selected_date: dateString
+        });
+        if (error) throw error;
+        log.out();
+    }
+
 
 
     async showItemsForDate(date) {
@@ -120,6 +125,7 @@ export class ItemManager {
         this.itemsSection.classList.remove('hidden');
         await this.ensureUserProfile();
         try {
+            await this.insertNullRecordsForDate(date);
             const items = await this.loadItemsForDate(date);
             this.renderItemsForDate(items, date);
         } catch (error) {
