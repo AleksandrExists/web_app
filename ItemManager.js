@@ -33,6 +33,7 @@ export class ItemManager {
             .lte('begin_date', dateString)
             .or(`end_date.is.null,end_date.gte.${dateString}`);
         if (error) throw error;
+        log.debug(items);
         log.out();
         return items;
     }
@@ -50,7 +51,7 @@ export class ItemManager {
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.step = '0.01';
-                input.value = item.data && item.data.length > 0 ? item.data[0].value || '' : '';
+                input.value = item.data?.[0]?.value ?? '';
                 input.placeholder = 'Введите значение';
                 input.className = 'item-input';
                 input.dataset.itemId = item.id;
@@ -67,6 +68,8 @@ export class ItemManager {
                         alert('Ошибка сохранения данных');
                     }
                 });
+                log.debug('/***********************************');
+                log.debug(item);
                 if (item.type_id === 1) {
                     itemDiv.innerHTML = `
                         <h3>${item.name}</h3>
@@ -78,6 +81,7 @@ export class ItemManager {
                     itemDiv.innerHTML = `
                         <h3>${item.name}</h3>
                         <p>Цель: ${item.target_value} in ${item.interval_type}</p>
+                        <p>Сегодня: ${item.completion ?? '0%'}, темп: ${item.pace ?? '0%'}</p>
                     `;
                 }
 

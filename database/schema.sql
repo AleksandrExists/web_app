@@ -140,7 +140,7 @@ CREATE VIEW days with (security_invoker = on) AS (
             items.add_to_sum,
             items.allow_overcompletion,
             items.negative,
-            COALESCE(items.start_value, 0) AS start_value,
+            CASE WHEN type_id = 1 THEN COALESCE(items.start_value, 0) ELSE NULL END AS start_value,
             items.target_value,
             items.target_change,
             -- SUM(COALESCE(data.value, 0)) OVER w_items AS acc_value,
@@ -170,7 +170,10 @@ CREATE VIEW days with (security_invoker = on) AS (
         (fact_change / NULLIF(date - begin_date + 1, 0)) * (remaining_duration - (value IS NOT NULL)::INTEGER) + fact_change + start_value AS expected_value,
         --Изменение в день для достижения цели (если сегодня данные уже внесены, то делим на остаток с завтрашнего дня)
         (target_change - fact_change) / NULLIF(remaining_duration - (value IS NOT NULL)::INTEGER, 0) AS daily_target_change,
-        fact_change / NULLIF(target_change, 0) * 100 AS completion,
+        CASE
+            WHEN type_id = 1 THEN fact_change / NULLIF(target_change, 0) * 100
+            WHEN type_id = 2 THEN value / target_value * 100
+        END AS completion,
         CASE
             WHEN type_id = 1 THEN fact_change / plan_change * 100
             WHEN type_id = 2 THEN CASE
@@ -191,8 +194,63 @@ CREATE VIEW days with (security_invoker = on) AS (
     FROM q1
 );
 
-INSERT INTO items (user_id, name, type_id, weight, begin_date, end_date, allow_overcompletion, add_to_sum, target_value) VALUES
-    ('4c988b55-7110-4ec6-976d-107501142f4b', 'task', 1, 30, CURRENT_DATE - 5, CURRENT_DATE - 1, TRUE, TRUE, 100);
+-- Включаем RLS для таблиц
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE _dict_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data ENABLE ROW LEVEL SECURITY;
 
-INSERT INTO items (user_id, name, type_id, weight, begin_date, allow_overcompletion, negative, target_value, interval_type) VALUES
-    ('4c988b55-7110-4ec6-976d-107501142f4b', 'habit', 2, 70, CURRENT_DATE - 4, TRUE, FALSE, 2, 'day');
+-- Политики для таблицы users
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
+CREATE POLICY "Users can view own profile" ON users
+    FOR SELECT USING (id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON users;
+CREATE POLICY "Users can insert own profile" ON users
+    FOR INSERT WITH CHECK (id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+CREATE POLICY "Users can update own profile" ON users
+    FOR UPDATE USING (id = (auth.jwt() ->> 'sub')::uuid);
+
+-- Политики для таблицы items
+DROP POLICY IF EXISTS "Users can view own items" ON items;
+CREATE POLICY "Users can view own items" ON items
+    FOR SELECT USING (user_id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can insert own items" ON items;
+CREATE POLICY "Users can insert own items" ON items
+    FOR INSERT WITH CHECK (user_id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can update own items" ON items;
+CREATE POLICY "Users can update own items" ON items
+    FOR UPDATE USING (user_id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can delete own items" ON items;
+CREATE POLICY "Users can delete own items" ON items
+    FOR DELETE USING (user_id = (auth.jwt() ->> 'sub')::uuid);
+
+-- Политики для таблицы data
+DROP POLICY IF EXISTS "Users can view own data" ON data;
+CREATE POLICY "Users can view own data" ON data
+    FOR SELECT USING (
+        item_id IN (
+            SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid
+        )
+    );
+
+DROP POLICY IF EXISTS "Users can insert own data" ON data;
+CREATE POLICY "Users can insert own data" ON data
+    FOR INSERT WITH CHECK (
+        item_id IN (
+            SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid
+        )
+    );
+
+DROP POLICY IF EXISTS "Users can update own data" ON data;
+CREATE POLICY "Users can update own data" ON data
+    FOR UPDATE USING (
+        item_id IN (
+            SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid
+        )
+    );
