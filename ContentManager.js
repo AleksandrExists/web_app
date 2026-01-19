@@ -1,11 +1,11 @@
-import { TaskManager } from './TaskManager.js';
+import { ItemManager } from './ItemManager.js';
 import { DaysManager } from './DaysManager.js';
 import { BottomNavManager } from './BottomNavManager.js';
 import { log } from './Logger.js';
 
 export class ContentManager {
     constructor(authManager, onReportsClick, onAddClick, onLogoutClick) {
-        this.taskManager = new TaskManager(authManager);
+        this.itemManager = new ItemManager(authManager);
         this.daysManager = new DaysManager((date) => this.selectDate(date));
         this.bottomNavManager = new BottomNavManager(onReportsClick, onAddClick, onLogoutClick);
         this.selectedDate = new Date();
@@ -25,7 +25,7 @@ export class ContentManager {
     hideContent() {
         log.in();
         this.hideDays();
-        this.hideTasks();
+        this.hideItems();
         this.hideBottomNav();
         log.out();
     }
@@ -41,12 +41,12 @@ export class ContentManager {
     selectDate(date) {
         log.in();
         this.selectedDate = date;
-        this.taskManager.showTasksForDate(date);
+        this.itemManager.showItemsForDate(date);
         log.out();
     }
 
-    hideTasks() {
-        this.taskManager.hideTasksSection();
+    hideItems() {
+        this.itemManager.hideItemsSection();
     }
 
     showBottomNav() {

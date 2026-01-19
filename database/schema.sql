@@ -1,70 +1,104 @@
 -- Таблица пользователей
-DROP TABLE IF EXISTS users CASCADE;
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT auth.uid(),  -- Supabase user ID
-    email VARCHAR(255) UNIQUE,
-    username VARCHAR(255),
-    first_name VARCHAR(255),
-    last_name VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- DROP TABLE IF EXISTS users CASCADE;
+-- CREATE TABLE users (
+--     id UUID PRIMARY KEY DEFAULT auth.uid(),  -- Supabase user ID
+--     email VARCHAR(255) UNIQUE,
+--     username VARCHAR(255),
+--     first_name VARCHAR(255),
+--     last_name VARCHAR(255),
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+--     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- );
 
 -- Справочник типов задач
 DROP TABLE IF EXISTS _dict_types CASCADE;
 CREATE TABLE _dict_types (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE
 );
 
+-- Добавление типов задач
+INSERT INTO _dict_types
+(name)
+VALUES
+    ('Цель'),
+    ('Привычка');
+
+-- Тип повторения привычек
+DROP TYPE IF EXISTS interval_type CASCADE;
+CREATE TYPE interval_type AS ENUM ('day', 'week', 'month', 'quarter', 'year');
+
 -- Таблица задач/привычек
-DROP TABLE IF EXISTS tasks CASCADE;
-CREATE TABLE tasks (
-    id SERIAL PRIMARY KEY,
+DROP TABLE IF EXISTS items CASCADE;
+CREATE TABLE items (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id UUID NOT NULL,
     name VARCHAR(64) NOT NULL,
     weight DECIMAL(5, 2),
-    add_to_sum BOOLEAN NOT NULL DEFAULT TRUE,
     type_id INTEGER NOT NULL,
-    start_value DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    begin_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    end_date DATE, --показывать всегда, но при type_id = 1 not null
+    duration INTEGER GENERATED ALWAYS AS 
+        (CASE WHEN end_date IS NULL THEN NULL ELSE ((end_date - begin_date) + 1) END) STORED,
+
+    allow_overcompletion BOOLEAN NOT NULL DEFAULT TRUE,
+    negative BOOLEAN, --при tasks не показывать, при type_id = 2 not null
+    add_to_sum BOOLEAN, --при habit не показывать, будет NULL; при type_id = 1 not null
+    start_value DECIMAL(10, 2), --при habit не показывать, будет NULL; при task считывать TODO добавить обработку NULL
     target_value DECIMAL(10, 2) NOT NULL,
-    target_change DECIMAL(10, 2) GENERATED ALWAYS AS (target_value - start_value) STORED,
-    begin_date DATE NOT NULL DEFAULT(CURRENT_DATE - 2),
-    end_date DATE NOT NULL DEFAULT(CURRENT_DATE + 2),
-    duration INTEGER GENERATED ALWAYS AS ((end_date - begin_date) + 1) STORED
+    target_change DECIMAL(10, 2) GENERATED ALWAYS AS
+        (CASE WHEN type_id = 1 THEN (target_value - start_value) ELSE NULL END) STORED,
+
+    interval_type interval_type, --при tasks не показывать, при type_id = 2 not null
+    interval_value DECIMAL(10, 6) GENERATED ALWAYS AS (
+        CASE WHEN type_id = 1 THEN NULL ELSE
+            CASE interval_type
+                WHEN 'day' THEN 1
+                WHEN 'week' THEN 7
+                WHEN 'month' THEN 30.436875
+                WHEN 'quarter' THEN 91.310625
+                WHEN 'year' THEN 365.2425
+            END
+        END
+    ) STORED,
 
     -- Проверки
     CONSTRAINT correct_date_check
-        CHECK (end_date >= begin_date),
+        CHECK (end_date IS NULL OR end_date >= begin_date),
     CONSTRAINT valid_weight_check
         CHECK (weight IS NULL OR (weight >= 0 AND weight <= 100)),
+    CONSTRAINT end_date_required_for_goals
+        CHECK (type_id != 1 OR end_date IS NOT NULL),
+    CONSTRAINT add_to_sum_required_for_goals
+        CHECK (type_id != 1 OR add_to_sum IS NOT NULL),
+    CONSTRAINT negative_required_for_habits
+        CHECK (type_id != 2 OR negative IS NOT NULL),
+    CONSTRAINT interval_type_required_for_habits
+        CHECK (type_id != 2 OR interval_type IS NOT NULL),
 
     -- Внешние ключи
-    CONSTRAINT fk_task_user
+    CONSTRAINT fk_item_user
         FOREIGN KEY (user_id)
         REFERENCES users(id)
         ON DELETE CASCADE,
-    CONSTRAINT fk_task_type
+    CONSTRAINT fk_item_type
         FOREIGN KEY (type_id)
         REFERENCES _dict_types(id)
-        ON DELETE RESTRICT,
-
-    -- Уникальность названия для пользователя
-    CONSTRAINT unique_user_task_name UNIQUE(user_id, name)
+        ON DELETE RESTRICT
 );
 
 -- Таблица данных по дням
 DROP TABLE IF EXISTS data CASCADE;
 CREATE TABLE data (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     date DATE NOT NULL,
-    task_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
     value DECIMAL(10, 2),
 
-    CONSTRAINT unique_date_task_id UNIQUE(date, task_id),
-    CONSTRAINT fk_task
-        FOREIGN KEY(task_id)
-        REFERENCES tasks(id)
+    CONSTRAINT unique_date_item_id UNIQUE(date, item_id),
+    CONSTRAINT fk_item
+        FOREIGN KEY(item_id)
+        REFERENCES items(id)
         ON DELETE CASCADE
 );
 
@@ -90,32 +124,43 @@ DROP VIEW IF EXISTS days CASCADE;
 CREATE VIEW days with (security_invoker = on) AS (
     WITH q1 AS(
         SELECT
+            --Переменные для расчетов с привычками
+            1000 AS max_percent_over,
+            100 AS max_percent_no_over,
             data.id,
             data.date,
-            data.task_id,
-            tasks.name,
-            tasks.begin_date,
-            tasks.end_date,
-            (tasks.end_date - data.date + 1) AS remaining_duration,
-            tasks.weight,
-            tasks.add_to_sum,
-            tasks.type_id,
-            tasks.start_value,
-            tasks.target_value,
-            tasks.target_change,
-            (tasks.target_change / tasks.duration::DECIMAL) * ((data.date - tasks.begin_date + 1)::DECIMAL) AS plan_change,
-            tasks.start_value + (tasks.target_change / tasks.duration::DECIMAL) * ((data.date - tasks.begin_date + 1)::DECIMAL) AS plan_value,
+            data.item_id,
             data.value,
+            items.name,
+            items.type_id,
+            items.weight,
+            items.begin_date,
+            items.end_date,
+            CASE WHEN end_date IS NULL THEN NULL ELSE (items.end_date - data.date + 1) END AS remaining_duration,
+            items.add_to_sum,
+            items.allow_overcompletion,
+            items.negative,
+            COALESCE(items.start_value, 0) AS start_value,
+            items.target_value,
+            items.target_change,
+            -- SUM(COALESCE(data.value, 0)) OVER w_items AS acc_value,
+            -- SUM(items.target_value / items.interval_value) OVER w_items AS acc_plan_value,
+            CASE 
+                WHEN items.type_id = 1 THEN (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL)
+                ELSE SUM(items.target_value / items.interval_value) OVER w_items
+            END AS plan_change,
+            CASE WHEN items.type_id = 1 THEN COALESCE(items.start_value, 0) + (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL) ELSE NULL END AS plan_value,
             CASE
+                WHEN type_id = 2 THEN SUM(COALESCE(data.value, 0)) OVER w_items
                 WHEN add_to_sum THEN
-                    COALESCE(SUM(data.value) OVER w_tasks, 0)
+                    COALESCE(SUM(data.value) OVER w_items, 0)
                 ELSE
-                    COALESCE(last_non_null_value(data.value) OVER w_tasks - tasks.start_value, 0)
+                    COALESCE(last_non_null_value(data.value) OVER w_items - items.start_value, 0)
             END AS fact_change
         FROM
             data JOIN
-            tasks ON data.task_id = tasks.id
-        WINDOW w_tasks AS (PARTITION BY task_id ORDER BY date)
+            items ON data.item_id = items.id
+        WINDOW w_items AS (PARTITION BY item_id ORDER BY date)
         )
     SELECT *,
         fact_change + start_value AS fact_value,
@@ -125,126 +170,29 @@ CREATE VIEW days with (security_invoker = on) AS (
         (fact_change / NULLIF(date - begin_date + 1, 0)) * (remaining_duration - (value IS NOT NULL)::INTEGER) + fact_change + start_value AS expected_value,
         --Изменение в день для достижения цели (если сегодня данные уже внесены, то делим на остаток с завтрашнего дня)
         (target_change - fact_change) / NULLIF(remaining_duration - (value IS NOT NULL)::INTEGER, 0) AS daily_target_change,
-        ROUND(fact_change / NULLIF(target_change, 0) * 100, 2) AS completion,
-        ROUND(fact_change / NULLIF(plan_change, 0) * 100, 2) AS pace
+        fact_change / NULLIF(target_change, 0) * 100 AS completion,
+        CASE
+            WHEN type_id = 1 THEN fact_change / plan_change * 100
+            WHEN type_id = 2 THEN CASE
+                WHEN negative AND target_value = 0 THEN CASE WHEN fact_change = 0 THEN 100 ELSE 0 END
+                WHEN plan_change = 0 THEN 0
+                WHEN negative THEN
+                    CASE
+                        WHEN allow_overcompletion THEN CASE WHEN fact_change < 0 THEN max_percent_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_over ) , max_percent_over ) END
+                        ELSE CASE WHEN fact_change < 0 THEN max_percent_no_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_no_over ) , max_percent_no_over ) END
+                    END
+                ELSE
+                    CASE
+                        WHEN allow_overcompletion THEN (fact_change / plan_change) * 100
+                        ELSE GREATEST(LEAST((fact_change / plan_change) * 100, max_percent_no_over), 0)
+                    END
+            END
+        END AS pace
     FROM q1
 );
 
--- Включаем RLS для таблиц
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE _dict_types ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE data ENABLE ROW LEVEL SECURITY;
+INSERT INTO items (user_id, name, type_id, weight, begin_date, end_date, allow_overcompletion, add_to_sum, target_value) VALUES
+    ('4c988b55-7110-4ec6-976d-107501142f4b', 'task', 1, 30, CURRENT_DATE - 5, CURRENT_DATE - 1, TRUE, TRUE, 100);
 
--- Политики для таблицы users
-DROP POLICY IF EXISTS "Users can view own profile" ON users;
-CREATE POLICY "Users can view own profile" ON users
-    FOR SELECT USING (id = (auth.jwt() ->> 'sub')::uuid);
-
-DROP POLICY IF EXISTS "Users can insert own profile" ON users;
-CREATE POLICY "Users can insert own profile" ON users
-    FOR INSERT WITH CHECK (id = (auth.jwt() ->> 'sub')::uuid);
-
-DROP POLICY IF EXISTS "Users can update own profile" ON users;
-CREATE POLICY "Users can update own profile" ON users
-    FOR UPDATE USING (id = (auth.jwt() ->> 'sub')::uuid);
-
--- Политики для таблицы tasks
-DROP POLICY IF EXISTS "Users can view own tasks" ON tasks;
-CREATE POLICY "Users can view own tasks" ON tasks
-    FOR SELECT USING (user_id = (auth.jwt() ->> 'sub')::uuid);
-
-DROP POLICY IF EXISTS "Users can insert own tasks" ON tasks;
-CREATE POLICY "Users can insert own tasks" ON tasks
-    FOR INSERT WITH CHECK (user_id = (auth.jwt() ->> 'sub')::uuid);
-
-DROP POLICY IF EXISTS "Users can update own tasks" ON tasks;
-CREATE POLICY "Users can update own tasks" ON tasks
-    FOR UPDATE USING (user_id = (auth.jwt() ->> 'sub')::uuid);
-
-DROP POLICY IF EXISTS "Users can delete own tasks" ON tasks;
-CREATE POLICY "Users can delete own tasks" ON tasks
-    FOR DELETE USING (user_id = (auth.jwt() ->> 'sub')::uuid);
-
--- Политики для таблицы data
-DROP POLICY IF EXISTS "Users can view own data" ON data;
-CREATE POLICY "Users can view own data" ON data
-    FOR SELECT USING (
-        task_id IN (
-            SELECT id FROM tasks WHERE user_id = (auth.jwt() ->> 'sub')::uuid
-        )
-    );
-
-DROP POLICY IF EXISTS "Users can insert own data" ON data;
-CREATE POLICY "Users can insert own data" ON data
-    FOR INSERT WITH CHECK (
-        task_id IN (
-            SELECT id FROM tasks WHERE user_id = (auth.jwt() ->> 'sub')::uuid
-        )
-    );
-
-DROP POLICY IF EXISTS "Users can update own data" ON data;
-CREATE POLICY "Users can update own data" ON data
-    FOR UPDATE USING (
-        task_id IN (
-            SELECT id FROM tasks WHERE user_id = (auth.jwt() ->> 'sub')::uuid
-        )
-    );
-
--- Триггеры для автоматического создания записей в data при INSERT tasks
-CREATE OR REPLACE FUNCTION tasks_insert_trigger_func()
-    RETURNS trigger
-    LANGUAGE 'plpgsql'
-AS $BODY$
-BEGIN
-    -- Вставляем записи для каждого дня используя generate_series
-    INSERT INTO data (date, task_id)
-    SELECT
-        NEW.begin_date + ((n - 1) * INTERVAL '1 day'),
-        NEW.id
-    FROM generate_series(1, NEW.duration) AS n
-    ON CONFLICT (date, task_id) DO NOTHING;
-
-    RETURN NEW;
-END;
-$BODY$;
-
-CREATE OR REPLACE TRIGGER insert_task
-    AFTER INSERT ON tasks
-    FOR EACH ROW
-    EXECUTE FUNCTION tasks_insert_trigger_func();
-
--- Триггеры для автоматического обновления записей в data при UPDATE tasks
-CREATE OR REPLACE FUNCTION tasks_update_trigger_func()
-    RETURNS trigger
-    LANGUAGE 'plpgsql'
-AS $BODY$
-BEGIN
-    -- Удаляем дни вне нового диапазона
-    DELETE FROM data WHERE task_id = OLD.id AND (date < NEW.begin_date OR date > NEW.end_date);
-
-    -- Вставляем новые дни в диапазоне
-    INSERT INTO data (date, task_id)
-    SELECT
-        NEW.begin_date + ((n - 1) * INTERVAL '1 day'),
-        NEW.id
-    FROM generate_series(1, NEW.duration) AS n
-    WHERE NOT EXISTS (SELECT 1 FROM data WHERE date = NEW.begin_date + ((n - 1) * INTERVAL '1 day') AND task_id = NEW.id);
-
-    RETURN NEW;
-END;
-$BODY$;
-
-CREATE OR REPLACE TRIGGER update_tasks
-    AFTER UPDATE ON tasks
-    FOR EACH ROW
-    EXECUTE FUNCTION tasks_update_trigger_func();
-
--- Добавление типов задач
-INSERT INTO _dict_types
-(name)
-VALUES
-    ('Цель'),
-    ('Привычка'),
-    ('Среднее'),
-    ('Проект');
+INSERT INTO items (user_id, name, type_id, weight, begin_date, allow_overcompletion, negative, target_value, interval_type) VALUES
+    ('4c988b55-7110-4ec6-976d-107501142f4b', 'habit', 2, 70, CURRENT_DATE - 4, TRUE, FALSE, 2, 'day');
