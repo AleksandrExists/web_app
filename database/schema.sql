@@ -159,6 +159,7 @@ CREATE VIEW days with (security_invoker = on) AS (
             CASE WHEN type_id = 1 THEN COALESCE(items.start_value, 0) ELSE NULL END AS start_value,
             items.target_value,
             items.target_change,
+            items.interval_type,
             -- SUM(COALESCE(data.value, 0)) OVER w_items AS acc_value,
             -- SUM(items.target_value / items.interval_value) OVER w_items AS acc_plan_value,
             CASE 

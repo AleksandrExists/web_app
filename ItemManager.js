@@ -69,14 +69,14 @@ export class ItemManager {
                     itemDiv.innerHTML = `
                         <h3>${item.name}</h3>
                         <p>Цель: ${item.target_value} к ${item.end_date}</p>
-                        <p>Сейчас: ${item.fact_value ?? 0} (${item.completion ?? '0%'}), темп: ${item.pace ?? '0%'}</p>
+                        <p>Сейчас: ${item.fact_value ?? 0} (${(item.completion ?? 0).toFixed(2)}%), темп: ${(item.pace ?? 0).toFixed(2)}%</p>
 
                     `;
                 } else {
                     itemDiv.innerHTML = `
                         <h3>${item.name}</h3>
                         <p>Цель: ${item.target_value} in ${item.interval_type}</p>
-                        <p>Сегодня: ${item.completion ?? '0%'}, темп: ${item.pace ?? '0%'}</p>
+                        <p>Сегодня: ${(item.completion ?? 0).toFixed(2)}%, темп: ${(item.pace ?? 0).toFixed(2)}%</p>
                     `;
                 }
 
