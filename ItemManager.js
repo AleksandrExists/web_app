@@ -31,6 +31,7 @@ export class ItemManager {
             .select('*')
             .eq('date', dateString);
         if (error) throw error;
+        log.debug(items);
         log.out();
         return items;
     }

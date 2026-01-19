@@ -191,23 +191,47 @@ CREATE VIEW days with (security_invoker = on) AS (
             WHEN type_id = 1 THEN fact_change / NULLIF(target_change, 0) * 100
             WHEN type_id = 2 THEN value / target_value * 100
         END AS completion,
-        CASE
-            WHEN type_id = 1 THEN fact_change / plan_change * 100
-            WHEN type_id = 2 THEN CASE
-                WHEN negative AND target_value = 0 THEN CASE WHEN fact_change = 0 THEN 100 ELSE 0 END
-                WHEN plan_change = 0 THEN 0
-                WHEN negative THEN
-                    CASE
-                        WHEN allow_overcompletion THEN CASE WHEN fact_change < 0 THEN max_percent_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_over ) , max_percent_over ) END
-                        ELSE CASE WHEN fact_change < 0 THEN max_percent_no_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_no_over ) , max_percent_no_over ) END
-                    END
-                ELSE
-                    CASE
-                        WHEN allow_overcompletion THEN (fact_change / plan_change) * 100
-                        ELSE GREATEST(LEAST((fact_change / plan_change) * 100, max_percent_no_over), 0)
-                    END
-            END
-        END AS pace
+        CASE 
+            WHEN plan_change = 0 THEN 0
+            ELSE 
+                ((fact_change - plan_change)::DECIMAL / plan_change) 
+                * 
+                CASE 
+                    WHEN negative THEN
+                        CASE 
+                            WHEN NOT allow_overcompletion AND (fact_change < plan_change OR fact_change > 2*plan_change) THEN 0
+                            ELSE -1
+                        END
+                    ELSE
+                        CASE 
+                            WHEN NOT allow_overcompletion AND fact_change > plan_change THEN 0
+                            ELSE 1
+                        END
+                END
+                +
+                CASE 
+                    WHEN NOT allow_overcompletion AND negative AND fact_change > 2*plan_change THEN -1
+                    ELSE 0
+                END
+                + 1
+        END * 100 AS pace
+        -- CASE
+        --     WHEN type_id = 1 THEN fact_change / plan_change * 100
+        --     WHEN type_id = 2 THEN CASE
+        --         WHEN negative AND target_value = 0 THEN CASE WHEN fact_change = 0 THEN 100 ELSE 0 END
+        --         WHEN plan_change = 0 THEN 0
+        --         WHEN negative THEN
+        --             CASE
+        --                 WHEN allow_overcompletion THEN CASE WHEN fact_change < 0 THEN max_percent_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_over ) , max_percent_over ) END
+        --                 ELSE CASE WHEN fact_change < 0 THEN max_percent_no_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_no_over ) , max_percent_no_over ) END
+        --             END
+        --         ELSE
+        --             CASE
+        --                 WHEN allow_overcompletion THEN (fact_change / plan_change) * 100
+        --                 ELSE GREATEST(LEAST((fact_change / plan_change) * 100, max_percent_no_over), 0)
+        --             END
+        --     END
+        -- END AS pace
     FROM q1
 );
 
