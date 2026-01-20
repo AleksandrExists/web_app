@@ -26,9 +26,10 @@ body {
     background: white;
     border-radius: 12px;
     padding: 8px;
-    margin-bottom: 80px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    min-height: 300px;
+    min-height: calc(100vh - 80px); /* assuming header height ~80px, adjust if needed */
+    display: flex;
+    flex-direction: column;
 }
 
 .auth-section {
@@ -100,4 +101,20 @@ body {
     margin: 2px 0;
     font-size: 12px;
     color: #666;
+}
+
+.content-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* prevent overflow */
+}
+
+.items-section {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.bottom-section {
+    flex-shrink: 0;
 }
