@@ -7,7 +7,7 @@
 body {
     font-family: sans-serif;
     background-color: #6595ec;
-    padding: 12px;
+    padding: 8px;
     overflow-x: hidden;
 }
 
@@ -25,7 +25,7 @@ body {
 .app-section {
     background: white;
     border-radius: 12px;
-    padding: 12px;
+    padding: 8px;
     margin-bottom: 80px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
     min-height: 300px;
