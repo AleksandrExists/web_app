@@ -26,11 +26,9 @@ export class DaysManager {
             date.setDate(today.getDate() - i);
             const dayOfWeek = daysOfWeek[date.getDay()];
             const dayNumber = date.getDate();
-            const buttonText = `${dayNumber} ${dayOfWeek}`;
-
             const button = document.createElement('button');
             button.className = 'day-button';
-            button.textContent = buttonText;
+            button.innerHTML = `${dayNumber}<br>${dayOfWeek}`;
             button.dataset.date = date.toISOString().split('T')[0]; // YYYY-MM-DD
 
             button.addEventListener('click', () => this.selectDay(date));

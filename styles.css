@@ -49,16 +49,29 @@ body {
 }
 
 .day-button {
-    margin: 5px;
-    padding: 10px;
+    width: 45px;
+    height: 45px;
+    margin: 2px;
+    padding: 5px;
     border: 1px solid #ccc;
     background: white;
     cursor: pointer;
+    border-radius: 50%;
+    text-align: center;
+    white-space: pre-line;
+    font-size: 12px;
+    line-height: 1.2;
 }
 
 .day-button.selected {
     background-color: #6595ec;
     color: white;
+}
+
+.days-section {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .hidden {
