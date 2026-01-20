@@ -235,6 +235,17 @@ CREATE VIEW days with (security_invoker = on) AS (
     FROM q1
 );
 
+-- View для статистики дня
+DROP VIEW IF EXISTS day_stats CASCADE;
+CREATE VIEW day_stats with (security_invoker = on) AS (
+    SELECT
+    date,
+    SUM(weight * pace) / SUM(weight) AS weighted_pace,
+    SUM(weight * pace) / SUM(weight) - LAG(SUM(weight * pace) / SUM(weight))  OVER (ORDER BY date) AS day_result
+    FROM days
+    GROUP BY date
+);
+
 -- Включаем RLS для таблиц
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE _dict_types ENABLE ROW LEVEL SECURITY;

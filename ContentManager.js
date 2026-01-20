@@ -1,5 +1,6 @@
 import { ItemManager } from './ItemManager.js';
 import { DaysManager } from './DaysManager.js';
+import { DayInfoManager } from './DayInfoManager.js';
 import { BottomNavManager } from './BottomNavManager.js';
 import { log } from './Logger.js';
 
@@ -7,6 +8,7 @@ export class ContentManager {
     constructor(authManager, onReportsClick, onAddClick, onLogoutClick) {
         this.itemManager = new ItemManager(authManager);
         this.daysManager = new DaysManager((date) => this.selectDate(date));
+        this.dayInfoManager = new DayInfoManager(authManager);
         this.bottomNavManager = new BottomNavManager(onReportsClick, onAddClick, onLogoutClick);
         this.selectedDate = new Date();
     }
@@ -26,6 +28,7 @@ export class ContentManager {
         log.in();
         this.hideDays();
         this.hideItems();
+        this.dayInfoManager.hideDayInfo();
         this.hideBottomNav();
         log.out();
     }
@@ -42,6 +45,7 @@ export class ContentManager {
         log.in();
         this.selectedDate = date;
         this.itemManager.showItemsForDate(date);
+        this.dayInfoManager.showDayInfo(date);
         log.out();
     }
 
