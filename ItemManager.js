@@ -46,15 +46,25 @@ export class ItemManager {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'item';
 
-                const input = document.createElement('input');
-                input.type = 'number';
-                input.step = '0.01';
-                input.value = item.value ?? '';
-                input.placeholder = 'Введите значение';
-                input.className = 'item-input';
-                input.dataset.itemId = item.item_id;
+                if (item.type_id === 1) {
+                    itemDiv.innerHTML = `
+                        <h3>${item.name}</h3>
+                        <p>Цель: ${item.target_value} к ${item.end_date}</p>
+                        <p>Сейчас: ${item.fact_value ?? 0} (${(item.completion ?? 0).toFixed(2)}%), темп: ${(item.pace ?? 0).toFixed(2)}%</p>
+                        <input type="number" step="0.01" value="${item.value ?? ''}" placeholder="Введите значение" class="item-input" data-item-id="${item.item_id}">
+                    `;
+                } else {
+                    itemDiv.innerHTML = `
+                        <h3>${item.name}</h3>
+                        <p>Цель: ${item.target_value} in ${item.interval_type}</p>
+                        <p>Сегодня: ${(item.completion ?? 0).toFixed(2)}%, темп: ${(item.pace ?? 0).toFixed(2)}%</p>
+                        <input type="number" step="0.01" value="${item.value ?? ''}" placeholder="Введите значение" class="item-input" data-item-id="${item.item_id}">
+                    `;
+                }
 
-                input.addEventListener('change', async (e) => {
+                // Add event listener to the input inside itemDiv
+                const inputElement = itemDiv.querySelector('.item-input');
+                inputElement.addEventListener('change', async (e) => {
                     const num = parseFloat(e.target.value);
                     const value = isNaN(num) ? null : num;
                     try {
@@ -67,22 +77,7 @@ export class ItemManager {
                         alert('Ошибка сохранения данных');
                     }
                 });
-                if (item.type_id === 1) {
-                    itemDiv.innerHTML = `
-                        <h3>${item.name}</h3>
-                        <p>Цель: ${item.target_value} к ${item.end_date}</p>
-                        <p>Сейчас: ${item.fact_value ?? 0} (${(item.completion ?? 0).toFixed(2)}%), темп: ${(item.pace ?? 0).toFixed(2)}%</p>
 
-                    `;
-                } else {
-                    itemDiv.innerHTML = `
-                        <h3>${item.name}</h3>
-                        <p>Цель: ${item.target_value} in ${item.interval_type}</p>
-                        <p>Сегодня: ${(item.completion ?? 0).toFixed(2)}%, темп: ${(item.pace ?? 0).toFixed(2)}%</p>
-                    `;
-                }
-
-                itemDiv.appendChild(input);
                 this.itemsSection.appendChild(itemDiv);
             });
         }
