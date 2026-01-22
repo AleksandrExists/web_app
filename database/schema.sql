@@ -50,7 +50,7 @@ CREATE TABLE items (
         (CASE WHEN type_id = 1 THEN (target_value - COALESCE(start_value, 0)) ELSE NULL END) STORED,
 
     interval_type interval_type,
-    interval_value DECIMAL(10, 6) GENERATED ALWAYS AS (
+    interval_length DECIMAL(10, 6) GENERATED ALWAYS AS (
         CASE WHEN type_id = 1 THEN NULL ELSE
             CASE interval_type
                 WHEN 'day' THEN 1
@@ -106,8 +106,8 @@ CREATE TABLE data (
 CREATE OR REPLACE FUNCTION last_non_null_state(
 	state anyelement,
 	value anyelement)
-    RETURNS anyelement
-    LANGUAGE 'plpgsql'
+RETURNS anyelement
+LANGUAGE 'plpgsql'
 AS $BODY$
 BEGIN
     RETURN COALESCE(value, state);
@@ -135,14 +135,34 @@ BEGIN
 END;
 $BODY$;
 
+-- Функция для подсчета суммы за последние n дней
+CREATE OR REPLACE FUNCTION get_sum_last_n_days(
+  p_item_id INT,
+  p_date DATE,
+  p_days INT DEFAULT 7
+)
+RETURNS NUMERIC
+LANGUAGE plpgsql STABLE
+AS $BODY$
+DECLARE
+  v_result NUMERIC;
+BEGIN
+  SELECT SUM(value)
+  INTO v_result
+  FROM data t
+  WHERE t.item_id = p_item_id
+    AND t.date BETWEEN p_date - (p_days - 1) * INTERVAL '1 day' 
+                   AND p_date;
+    
+  RETURN v_result;
+END;
+$BODY$;
+
 -- View для отображения данных с расчетами
 DROP VIEW IF EXISTS days CASCADE;
 CREATE VIEW days with (security_invoker = on) AS (
     WITH q1 AS(
         SELECT
-            --Переменные для расчетов с привычками
-            1000 AS max_percent_over,
-            100 AS max_percent_no_over,
             data.id,
             data.date,
             data.item_id,
@@ -160,13 +180,20 @@ CREATE VIEW days with (security_invoker = on) AS (
             items.target_value,
             items.target_change,
             items.interval_type,
-            -- SUM(COALESCE(data.value, 0)) OVER w_items AS acc_value,
-            -- SUM(items.target_value / items.interval_value) OVER w_items AS acc_plan_value,
+            items.interval_length,
+            -- Сколько выполнено за интервал с поправкой на дробное число
+            get_sum_last_n_days(item_id, date, CEIL(interval_length)::INTEGER) / CEIL(interval_length) * interval_length AS interval_fact,
+
             CASE 
                 WHEN items.type_id = 1 THEN (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL)
-                ELSE SUM(items.target_value / items.interval_value) OVER w_items
+                ELSE SUM(items.target_value / items.interval_length) OVER w_items
             END AS plan_change,
-            CASE WHEN items.type_id = 1 THEN COALESCE(items.start_value, 0) + (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL) ELSE NULL END AS plan_value,
+
+            CASE
+                WHEN items.type_id = 1 THEN COALESCE(items.start_value, 0) + (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL)
+                ELSE NULL
+            END AS plan_value,
+
             CASE
                 WHEN type_id = 2 THEN SUM(COALESCE(data.value, 0)) OVER w_items
                 WHEN add_to_sum THEN
@@ -174,65 +201,87 @@ CREATE VIEW days with (security_invoker = on) AS (
                 ELSE
                     last_non_null_value(data.value) OVER w_items - COALESCE(start_value, 0)
             END AS fact_change
+            
         FROM
             data JOIN
             items ON data.item_id = items.id
         WINDOW w_items AS (PARTITION BY item_id ORDER BY date)
-        )
-    SELECT *,
-        fact_change + start_value AS fact_value,
-        fact_change / NULLIF(date - begin_date + 1, 0) AS avg_change,
-        target_change - fact_change AS remaining_change,
-        --Ожидаемое значение на дату дедлайна
-        (fact_change / NULLIF(date - begin_date + 1, 0)) * (remaining_duration - (value IS NOT NULL)::INTEGER) + fact_change + start_value AS expected_value,
-        --Изменение в день для достижения цели (если сегодня данные уже внесены, то делим на остаток с завтрашнего дня)
-        (target_change - fact_change) / NULLIF(remaining_duration - (value IS NOT NULL)::INTEGER, 0) AS daily_target_change,
-        CASE
-            WHEN type_id = 1 THEN fact_change / NULLIF(target_change, 0) * 100
-            WHEN type_id = 2 THEN value / target_value * 100
-        END AS completion,
-        CASE 
-            WHEN plan_change = 0 THEN 0
-            ELSE 
-                ((fact_change - plan_change)::DECIMAL / plan_change) 
-                * 
-                CASE 
-                    WHEN negative THEN
-                        CASE 
-                            WHEN NOT allow_overcompletion AND (fact_change < plan_change OR fact_change > 2*plan_change) THEN 0
-                            ELSE -1
-                        END
-                    ELSE
-                        CASE 
-                            WHEN NOT allow_overcompletion AND fact_change > plan_change THEN 0
-                            ELSE 1
-                        END
-                END
-                +
-                CASE 
-                    WHEN NOT allow_overcompletion AND negative AND fact_change > 2*plan_change THEN -1
-                    ELSE 0
-                END
-                + 1
-        END * 100 AS pace
-        -- CASE
-        --     WHEN type_id = 1 THEN fact_change / plan_change * 100
-        --     WHEN type_id = 2 THEN CASE
-        --         WHEN negative AND target_value = 0 THEN CASE WHEN fact_change = 0 THEN 100 ELSE 0 END
-        --         WHEN plan_change = 0 THEN 0
-        --         WHEN negative THEN
-        --             CASE
-        --                 WHEN allow_overcompletion THEN CASE WHEN fact_change < 0 THEN max_percent_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_over ) , max_percent_over ) END
-        --                 ELSE CASE WHEN fact_change < 0 THEN max_percent_no_over ELSE LEAST( COALESCE( (plan_change / NULLIF(fact_change, 0)) * 100 , max_percent_no_over ) , max_percent_no_over ) END
-        --             END
-        --         ELSE
-        --             CASE
-        --                 WHEN allow_overcompletion THEN (fact_change / plan_change) * 100
-        --                 ELSE GREATEST(LEAST((fact_change / plan_change) * 100, max_percent_no_over), 0)
-        --             END
-        --     END
-        -- END AS pace
-    FROM q1
+        ),
+    q2 AS (
+        SELECT *,
+            fact_change + start_value AS fact_value,
+            fact_change / NULLIF(date - begin_date + 1, 0) AS avg_change,
+            target_change - fact_change AS remaining_change,
+            --Ожидаемое значение на дату дедлайна
+            (fact_change / NULLIF(date - begin_date + 1, 0)) * (remaining_duration - (value IS NOT NULL)::INTEGER) + fact_change + start_value AS expected_value,
+            --Изменение в день для достижения цели (если сегодня данные уже внесены, то делим на остаток с завтрашнего дня)
+            (target_change - fact_change) / NULLIF(remaining_duration - (value IS NOT NULL)::INTEGER, 0) AS daily_target_change,
+            CASE
+                WHEN type_id = 1 THEN fact_change / NULLIF(target_change, 0)
+                ELSE 
+                    ((interval_fact - target_value)::DECIMAL / target_value) * 
+                    CASE 
+                        WHEN NOT allow_overcompletion THEN
+                            CASE 
+                                WHEN negative THEN
+                                    CASE 
+                                        WHEN interval_fact < target_value OR interval_fact > 2*target_value THEN 0
+                                        ELSE -1
+                                    END
+                                ELSE
+                                    CASE 
+                                        WHEN interval_fact > target_value THEN 0
+                                        ELSE 1
+                                    END
+                            END
+                        ELSE
+                            CASE 
+                                WHEN negative THEN -1
+                                ELSE 1
+                            END
+                    END
+                    +
+                    CASE 
+                        WHEN NOT allow_overcompletion AND negative AND interval_fact > 2*target_value THEN -1
+                        ELSE 0
+                    END
+                    + 1
+            END * 100 AS completion,
+            CASE 
+                WHEN plan_change = 0 THEN 0
+                ELSE 
+                    ((fact_change - plan_change)::DECIMAL / plan_change) * 
+                    CASE 
+                        WHEN NOT allow_overcompletion THEN
+                            CASE 
+                                WHEN negative THEN
+                                    CASE 
+                                        WHEN fact_change < plan_change OR fact_change > 2*plan_change THEN 0
+                                        ELSE -1
+                                    END
+                                ELSE
+                                    CASE 
+                                        WHEN fact_change > plan_change THEN 0
+                                        ELSE 1
+                                    END
+                            END
+                        ELSE
+                            CASE 
+                                WHEN negative THEN -1
+                                ELSE 1
+                            END
+                    END
+                    +
+                    CASE 
+                        WHEN NOT allow_overcompletion AND negative AND fact_change > 2*plan_change THEN -1
+                        ELSE 0
+                    END
+                    + 1
+            END * 100 AS pace
+        FROM q1
+    )
+    SELECT *
+    FROM q2
 );
 
 -- View для статистики дня
