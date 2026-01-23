@@ -1,5 +1,5 @@
 // Production конфигурация Supabase
 export const SUPABASE_CONFIG = {
-    URL: 'https://qbfherkbllxizpcqixbn.supabase.co',
-    ANON_KEY: 'sb_publishable_gJOJhj-1KDdD4tCd0vEI3A_rUj8cYRd'
+    URL: 'https://xfonqjuxnysgnaowaukv.supabase.co',
+    ANON_KEY: 'sb_publishable_-3zNMEXBdjmS5xm-oVdYCQ_L3rgCM62'
 };
