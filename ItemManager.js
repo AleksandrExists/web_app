@@ -27,7 +27,7 @@ export class ItemManager {
         log.in();
         const dateString = date.toISOString().split('T')[0];
         const { data: items, error } = await this.authManager.supabase
-            .from('days')
+            .from('items_days_calc')
             .select('*')
             .eq('date', dateString);
         if (error) throw error;
