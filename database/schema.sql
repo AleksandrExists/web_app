@@ -5,6 +5,7 @@ CREATE OR REPLACE FUNCTION last_non_null_state(
 )
 RETURNS anyelement
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
     RETURN COALESCE(value, state);
@@ -21,6 +22,7 @@ CREATE OR REPLACE FUNCTION insert_null_data_for_date(selected_date DATE)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     INSERT INTO data (date, item_id, value)
@@ -43,6 +45,7 @@ CREATE OR REPLACE FUNCTION get_sum_last_n_days(
 )
 RETURNS NUMERIC
 LANGUAGE plpgsql STABLE
+SET search_path = public
 AS $$
 DECLARE
     v_result NUMERIC;
@@ -67,6 +70,7 @@ CREATE OR REPLACE FUNCTION calculate_completion(
 )
 RETURNS NUMERIC
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
     result NUMERIC;
@@ -214,6 +218,19 @@ ALTER TABLE items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE data ENABLE ROW LEVEL SECURITY;
+
+-- Policies for users
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
+CREATE POLICY "Users can view own profile" ON users
+    FOR SELECT USING (id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON users;
+CREATE POLICY "Users can insert own profile" ON users
+    FOR INSERT WITH CHECK (id = (auth.jwt() ->> 'sub')::uuid);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+CREATE POLICY "Users can update own profile" ON users
+    FOR UPDATE USING (id = (auth.jwt() ->> 'sub')::uuid);
 
 -- Policies for _dict_types
 DROP POLICY IF EXISTS "Users can view _dict_types" ON _dict_types;
@@ -425,7 +442,6 @@ CREATE VIEW habits_days_calc WITH (security_invoker = on) AS (
             COALESCE(get_sum_last_n_days(item_id, date, CEIL(habits_calc.interval_length)::INTEGER) /
                 CEIL(habits_calc.interval_length) * habits_calc.interval_length, 0) AS fact_value,
             -- Planned change from begin_date
-            --SUM(habits_calc.plan_daily_change) OVER w_items AS plan_change,
             habits_calc.plan_daily_change * ((data.date - habits_calc.begin_date + 1)::NUMERIC) AS plan_change,
             -- Actual change from begin_date
             COALESCE(SUM(data.value) OVER w_items, 0) AS fact_change
@@ -523,9 +539,9 @@ CREATE VIEW items_days_calc WITH (security_invoker = on) AS (
 DROP VIEW IF EXISTS day_stats CASCADE;
 CREATE VIEW day_stats WITH (security_invoker = on) AS (
     SELECT
-    date,
-    SUM(weight * pace) / SUM(weight) AS weighted_pace,
-    SUM(weight * pace) / SUM(weight) - LAG(SUM(weight * pace) / SUM(weight))  OVER (ORDER BY date) AS day_result
+        date,
+        SUM(weight * pace) / SUM(weight) AS weighted_pace,
+        SUM(weight * pace) / SUM(weight) - LAG(SUM(weight * pace) / SUM(weight))  OVER (ORDER BY date) AS day_result
     FROM items_days_calc
     GROUP BY date
 );
