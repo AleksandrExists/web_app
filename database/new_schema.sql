@@ -103,16 +103,16 @@ END;
 $$;
 
 -- Users table
--- DROP TABLE IF EXISTS users CASCADE;
--- CREATE TABLE users (
---     id UUID PRIMARY KEY DEFAULT auth.uid(),  -- Supabase user ID
---     email VARCHAR(255) UNIQUE,
---     username VARCHAR(255),
---     first_name VARCHAR(255),
---     last_name VARCHAR(255),
---     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
---     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
--- );
+DROP TABLE IF EXISTS users CASCADE;
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT auth.uid(),  -- Supabase user ID
+    email VARCHAR(255) UNIQUE,
+    username VARCHAR(255),
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
 -- Dictionary for item types
 DROP TABLE IF EXISTS _dict_types CASCADE;
@@ -310,10 +310,6 @@ CREATE POLICY "Users can update own data" ON data
             SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid
         )
     );
-
-
-
-
 
 -- Calculated constants for goals
 DROP VIEW IF EXISTS goals_calc CASCADE;
@@ -534,11 +530,10 @@ CREATE VIEW day_stats WITH (security_invoker = on) AS (
     GROUP BY date
 );
 
-DROP VIEW IF EXISTS __temp_view;
-CREATE VIEW __temp_view WITH (security_invoker = on) AS (
-    SELECT
-        date, value, target_value, interval_length, plan_change, fact_change, fact_value, avg_change, remaining_change,
-        daily_target_change, completion, pace
-    FROM items_days_calc
-);
-
+-- DROP VIEW IF EXISTS __temp_view;
+-- CREATE VIEW __temp_view WITH (security_invoker = on) AS (
+--     SELECT
+--         date, value, target_value, interval_length, plan_change, fact_change, fact_value, avg_change, remaining_change,
+--         daily_target_change, completion, pace
+--     FROM items_days_calc
+-- );

@@ -1,82 +1,161 @@
--- Таблица пользователей
--- DROP TABLE IF EXISTS users CASCADE;
--- CREATE TABLE users (
---     id UUID PRIMARY KEY DEFAULT auth.uid(),  -- Supabase user ID
---     email VARCHAR(255) UNIQUE,
---     username VARCHAR(255),
---     first_name VARCHAR(255),
---     last_name VARCHAR(255),
---     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
---     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
--- );
+-- Functions for calculating the last non-null value in days
+CREATE OR REPLACE FUNCTION last_non_null_state(
+    state anyelement,
+    value anyelement
+)
+RETURNS anyelement
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN COALESCE(value, state);
+END;
+$$;
 
--- Справочник типов задач
+CREATE OR REPLACE AGGREGATE last_non_null_value(anyelement) (
+    SFUNC = last_non_null_state,
+    STYPE = anyelement
+);
+
+-- Function to insert null records for a date
+CREATE OR REPLACE FUNCTION insert_null_data_for_date(selected_date DATE)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    INSERT INTO data (date, item_id, value)
+    SELECT selected_date, id, NULL
+    FROM items
+    WHERE begin_date <= selected_date
+        AND (
+            (type_id = 1 AND end_date >= selected_date) OR
+            (type_id = 2 AND (end_date IS NULL OR end_date >= selected_date))
+      )
+    ON CONFLICT (date, item_id) DO NOTHING;
+END;
+$$;
+
+-- Function to calculate sum for last n days
+CREATE OR REPLACE FUNCTION get_sum_last_n_days(
+    p_item_id INT,
+    p_date DATE,
+    p_days INT DEFAULT 7
+)
+RETURNS NUMERIC
+LANGUAGE plpgsql STABLE
+AS $$
+DECLARE
+    v_result NUMERIC;
+BEGIN
+    SELECT SUM(value)
+    INTO v_result
+    FROM data t
+    WHERE t.item_id = p_item_id
+        AND t.date BETWEEN p_date - (p_days - 1) * INTERVAL '1 day'
+        AND p_date;
+
+    RETURN v_result;
+END;
+$$;
+
+-- Function to calculate completion for goals/habits
+CREATE OR REPLACE FUNCTION calculate_completion(
+    fact NUMERIC,
+    plan NUMERIC,
+    allow_overcompletion BOOLEAN,
+    negative BOOLEAN
+)
+RETURNS NUMERIC
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    result NUMERIC;
+BEGIN
+    result := COALESCE((fact - plan) / NULLIF(plan, 0), 0) *
+        CASE
+            WHEN NOT allow_overcompletion THEN
+                CASE
+                    WHEN negative THEN
+                        CASE
+                            WHEN fact < plan OR fact > 2 * plan THEN 0
+                            ELSE -1
+                        END
+                    ELSE
+                        CASE
+                            WHEN fact > plan THEN 0
+                            ELSE 1
+                        END
+                END
+            ELSE
+                CASE
+                    WHEN negative THEN -1
+                    ELSE 1
+                END
+        END
+        +
+        CASE
+            WHEN NOT allow_overcompletion AND negative AND fact > 2 * plan THEN -1
+            ELSE 0
+        END
+        + 1;
+    RETURN result * 100;
+END;
+$$;
+
+-- Users table
+DROP TABLE IF EXISTS users CASCADE;
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT auth.uid(),  -- Supabase user ID
+    email VARCHAR(255) UNIQUE,
+    username VARCHAR(255),
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Dictionary for item types
 DROP TABLE IF EXISTS _dict_types CASCADE;
 CREATE TABLE _dict_types (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(32) NOT NULL UNIQUE
 );
 
--- Добавление типов задач
+-- Insert item types
 INSERT INTO _dict_types
 (name)
 VALUES
-    ('Цель'),
-    ('Привычка');
+    ('Goal'),
+    ('Habit');
 
--- Тип повторения привычек
+-- Habit interval type
 DROP TYPE IF EXISTS interval_type CASCADE;
 CREATE TYPE interval_type AS ENUM ('day', 'week', 'month', 'quarter', 'year');
 
--- Таблица задач/привычек
+-- Common table for items
 DROP TABLE IF EXISTS items CASCADE;
 CREATE TABLE items (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id UUID NOT NULL,
     name VARCHAR(64) NOT NULL,
-    weight DECIMAL(5, 2),
+    weight NUMERIC(5, 2),
     type_id INTEGER NOT NULL,
     begin_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    end_date DATE,
-    duration INTEGER GENERATED ALWAYS AS 
-        (CASE WHEN end_date IS NULL THEN NULL ELSE ((end_date - begin_date) + 1) END) STORED,
-
+    end_date DATE,  -- Required for goals, optional for habits
+    duration INTEGER GENERATED ALWAYS AS
+        ((end_date - begin_date) + 1) STORED,
     allow_overcompletion BOOLEAN NOT NULL DEFAULT TRUE,
-    negative BOOLEAN,
-    add_to_sum BOOLEAN,
-    start_value DECIMAL(10, 2),
-    target_value DECIMAL(10, 2) NOT NULL,
-    target_change DECIMAL(10, 2) GENERATED ALWAYS AS
-        (CASE WHEN type_id = 1 THEN (target_value - COALESCE(start_value, 0)) ELSE NULL END) STORED,
+    target_value NUMERIC NOT NULL,
 
-    interval_type interval_type,
-    interval_length DECIMAL(10, 6) GENERATED ALWAYS AS (
-        CASE WHEN type_id = 1 THEN NULL ELSE
-            CASE interval_type
-                WHEN 'day' THEN 1
-                WHEN 'week' THEN 7
-                WHEN 'month' THEN 30.436875
-                WHEN 'quarter' THEN 91.310625
-                WHEN 'year' THEN 365.2425
-            END
-        END
-    ) STORED,
-
-    -- Проверки
-    CONSTRAINT correct_date_check
-        CHECK (end_date IS NULL OR end_date >= begin_date),
+    -- Checks
     CONSTRAINT valid_weight_check
         CHECK (weight IS NULL OR (weight >= 0 AND weight <= 100)),
-    CONSTRAINT end_date_required_for_goals
-        CHECK (type_id != 1 OR end_date IS NOT NULL),
-    CONSTRAINT add_to_sum_required_for_goals
-        CHECK (type_id != 1 OR add_to_sum IS NOT NULL),
-    CONSTRAINT negative_required_for_habits
-        CHECK (type_id != 2 OR negative IS NOT NULL),
-    CONSTRAINT interval_type_required_for_habits
-        CHECK (type_id != 2 OR interval_type IS NOT NULL),
+    CONSTRAINT correct_date_check
+        CHECK (end_date IS NULL OR end_date >= begin_date),
+    CONSTRAINT goal_end_date_check
+        CHECK (type_id <> 1 OR end_date IS NOT NULL),
 
-    -- Внешние ключи
+    -- Foreign keys
     CONSTRAINT fk_item_user
         FOREIGN KEY (user_id)
         REFERENCES users(id)
@@ -87,13 +166,38 @@ CREATE TABLE items (
         ON DELETE RESTRICT
 );
 
--- Таблица данных по дням
+-- Goals table
+DROP TABLE IF EXISTS goals CASCADE;
+CREATE TABLE goals (
+    id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    add_to_sum BOOLEAN NOT NULL,
+    start_value NUMERIC
+);
+
+-- Habits table
+DROP TABLE IF EXISTS habits CASCADE;
+CREATE TABLE habits (
+    id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    negative BOOLEAN NOT NULL DEFAULT FALSE,
+    interval_type interval_type NOT NULL,
+    interval_length NUMERIC GENERATED ALWAYS AS (
+        CASE interval_type
+            WHEN 'day' THEN 1
+            WHEN 'week' THEN 7
+            WHEN 'month' THEN 30.436875
+            WHEN 'quarter' THEN 91.310625
+            WHEN 'year' THEN 365.2425
+        END
+    ) STORED
+);
+
+-- Daily data table
 DROP TABLE IF EXISTS data CASCADE;
 CREATE TABLE data (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     date DATE NOT NULL,
     item_id INTEGER NOT NULL,
-    value DECIMAL(10, 2),
+    value NUMERIC,
 
     CONSTRAINT unique_date_item_id UNIQUE(date, item_id),
     CONSTRAINT fk_item
@@ -102,219 +206,20 @@ CREATE TABLE data (
         ON DELETE CASCADE
 );
 
--- Функции для расчета последнего не null значения в days
-CREATE OR REPLACE FUNCTION last_non_null_state(
-	state anyelement,
-	value anyelement)
-RETURNS anyelement
-LANGUAGE 'plpgsql'
-AS $BODY$
-BEGIN
-    RETURN COALESCE(value, state);
-END;
-$BODY$;
 
-CREATE OR REPLACE AGGREGATE last_non_null_value(anyelement) (
-    SFUNC = last_non_null_state,
-    STYPE = anyelement
-);
-
--- Функция для вставки null-записей за день
-CREATE OR REPLACE FUNCTION insert_null_data_for_date(selected_date DATE)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $BODY$
-BEGIN
-    INSERT INTO data (date, item_id, value)
-    SELECT selected_date, id, NULL
-    FROM items
-    WHERE begin_date <= selected_date
-      AND (end_date IS NULL OR end_date >= selected_date)
-    ON CONFLICT (date, item_id) DO NOTHING;
-END;
-$BODY$;
-
--- Функция для подсчета суммы за последние n дней
-CREATE OR REPLACE FUNCTION get_sum_last_n_days(
-  p_item_id INT,
-  p_date DATE,
-  p_days INT DEFAULT 7
-)
-RETURNS NUMERIC
-LANGUAGE plpgsql STABLE
-AS $BODY$
-DECLARE
-  v_result NUMERIC;
-BEGIN
-  SELECT SUM(value)
-  INTO v_result
-  FROM data t
-  WHERE t.item_id = p_item_id
-    AND t.date BETWEEN p_date - (p_days - 1) * INTERVAL '1 day' 
-                   AND p_date;
-    
-  RETURN v_result;
-END;
-$BODY$;
-
--- View для отображения данных с расчетами
-DROP VIEW IF EXISTS days CASCADE;
-CREATE VIEW days with (security_invoker = on) AS (
-    WITH q1 AS(
-        SELECT
-            data.id,
-            data.date,
-            data.item_id,
-            data.value,
-            items.name,
-            items.type_id,
-            items.weight,
-            items.begin_date,
-            items.end_date,
-            CASE WHEN end_date IS NULL THEN NULL ELSE (items.end_date - data.date + 1) END AS remaining_duration,
-            items.add_to_sum,
-            items.allow_overcompletion,
-            items.negative,
-            CASE WHEN type_id = 1 THEN COALESCE(items.start_value, 0) ELSE NULL END AS start_value,
-            items.target_value,
-            items.target_change,
-            items.interval_type,
-            items.interval_length,
-            -- Сколько выполнено за интервал с поправкой на дробное число
-            get_sum_last_n_days(item_id, date, CEIL(interval_length)::INTEGER) / CEIL(interval_length) * interval_length AS interval_fact,
-
-            CASE 
-                WHEN items.type_id = 1 THEN (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL)
-                ELSE SUM(items.target_value / items.interval_length) OVER w_items
-            END AS plan_change,
-
-            CASE
-                WHEN items.type_id = 1 THEN COALESCE(items.start_value, 0) + (items.target_change / items.duration) * ((data.date - items.begin_date + 1)::DECIMAL)
-                ELSE NULL
-            END AS plan_value,
-
-            CASE
-                WHEN type_id = 2 THEN SUM(COALESCE(data.value, 0)) OVER w_items
-                WHEN add_to_sum THEN
-                    COALESCE(SUM(data.value) OVER w_items, 0)
-                ELSE
-                    last_non_null_value(data.value) OVER w_items - COALESCE(start_value, 0)
-            END AS fact_change
-            
-        FROM
-            data JOIN
-            items ON data.item_id = items.id
-        WINDOW w_items AS (PARTITION BY item_id ORDER BY date)
-        ),
-    q2 AS (
-        SELECT *,
-            fact_change + start_value AS fact_value,
-            fact_change / NULLIF(date - begin_date + 1, 0) AS avg_change,
-            target_change - fact_change AS remaining_change,
-            --Ожидаемое значение на дату дедлайна
-            (fact_change / NULLIF(date - begin_date + 1, 0)) * (remaining_duration - (value IS NOT NULL)::INTEGER) + fact_change + start_value AS expected_value,
-            --Изменение в день для достижения цели (если сегодня данные уже внесены, то делим на остаток с завтрашнего дня)
-            (target_change - fact_change) / NULLIF(remaining_duration - (value IS NOT NULL)::INTEGER, 0) AS daily_target_change,
-            CASE
-                WHEN type_id = 1 THEN fact_change / NULLIF(target_change, 0)
-                ELSE 
-                    ((interval_fact - target_value)::DECIMAL / target_value) * 
-                    CASE 
-                        WHEN NOT allow_overcompletion THEN
-                            CASE 
-                                WHEN negative THEN
-                                    CASE 
-                                        WHEN interval_fact < target_value OR interval_fact > 2*target_value THEN 0
-                                        ELSE -1
-                                    END
-                                ELSE
-                                    CASE 
-                                        WHEN interval_fact > target_value THEN 0
-                                        ELSE 1
-                                    END
-                            END
-                        ELSE
-                            CASE 
-                                WHEN negative THEN -1
-                                ELSE 1
-                            END
-                    END
-                    +
-                    CASE 
-                        WHEN NOT allow_overcompletion AND negative AND interval_fact > 2*target_value THEN -1
-                        ELSE 0
-                    END
-                    + 1
-            END * 100 AS completion,
-            CASE 
-                WHEN plan_change = 0 THEN 0
-                ELSE 
-                    ((fact_change - plan_change)::DECIMAL / plan_change) * 
-                    CASE 
-                        WHEN NOT allow_overcompletion THEN
-                            CASE 
-                                WHEN negative THEN
-                                    CASE 
-                                        WHEN fact_change < plan_change OR fact_change > 2*plan_change THEN 0
-                                        ELSE -1
-                                    END
-                                ELSE
-                                    CASE 
-                                        WHEN fact_change > plan_change THEN 0
-                                        ELSE 1
-                                    END
-                            END
-                        ELSE
-                            CASE 
-                                WHEN negative THEN -1
-                                ELSE 1
-                            END
-                    END
-                    +
-                    CASE 
-                        WHEN NOT allow_overcompletion AND negative AND fact_change > 2*plan_change THEN -1
-                        ELSE 0
-                    END
-                    + 1
-            END * 100 AS pace
-        FROM q1
-    )
-    SELECT *
-    FROM q2
-);
-
--- View для статистики дня
-DROP VIEW IF EXISTS day_stats CASCADE;
-CREATE VIEW day_stats with (security_invoker = on) AS (
-    SELECT
-    date,
-    SUM(weight * pace) / SUM(weight) AS weighted_pace,
-    SUM(weight * pace) / SUM(weight) - LAG(SUM(weight * pace) / SUM(weight))  OVER (ORDER BY date) AS day_result
-    FROM days
-    GROUP BY date
-);
-
--- Включаем RLS для таблиц
+-- Enable RLS
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE _dict_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE data ENABLE ROW LEVEL SECURITY;
 
--- Политики для таблицы users
-DROP POLICY IF EXISTS "Users can view own profile" ON users;
-CREATE POLICY "Users can view own profile" ON users
-    FOR SELECT USING (id = (auth.jwt() ->> 'sub')::uuid);
+-- Policies for _dict_types
+DROP POLICY IF EXISTS "Users can view _dict_types" ON _dict_types;
+CREATE POLICY "Users can view _dict_types" ON _dict_types FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Users can insert own profile" ON users;
-CREATE POLICY "Users can insert own profile" ON users
-    FOR INSERT WITH CHECK (id = (auth.jwt() ->> 'sub')::uuid);
-
-DROP POLICY IF EXISTS "Users can update own profile" ON users;
-CREATE POLICY "Users can update own profile" ON users
-    FOR UPDATE USING (id = (auth.jwt() ->> 'sub')::uuid);
-
--- Политики для таблицы items
+-- Policies for items
 DROP POLICY IF EXISTS "Users can view own items" ON items;
 CREATE POLICY "Users can view own items" ON items
     FOR SELECT USING (user_id = (auth.jwt() ->> 'sub')::uuid);
@@ -331,7 +236,57 @@ DROP POLICY IF EXISTS "Users can delete own items" ON items;
 CREATE POLICY "Users can delete own items" ON items
     FOR DELETE USING (user_id = (auth.jwt() ->> 'sub')::uuid);
 
--- Политики для таблицы data
+-- Policies for goals
+DROP POLICY IF EXISTS "Users can view own goals" ON goals;
+CREATE POLICY "Users can view own goals" ON goals
+    FOR SELECT USING (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+DROP POLICY IF EXISTS "Users can insert own goals" ON goals;
+CREATE POLICY "Users can insert own goals" ON goals
+    FOR INSERT WITH CHECK (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+DROP POLICY IF EXISTS "Users can update own goals" ON goals;
+CREATE POLICY "Users can update own goals" ON goals
+    FOR UPDATE USING (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+DROP POLICY IF EXISTS "Users can delete own goals" ON goals;
+CREATE POLICY "Users can delete own goals" ON goals
+    FOR DELETE USING (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+-- Policies for habits
+DROP POLICY IF EXISTS "Users can view own habits" ON habits;
+CREATE POLICY "Users can view own habits" ON habits
+    FOR SELECT USING (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+DROP POLICY IF EXISTS "Users can insert own habits" ON habits;
+CREATE POLICY "Users can insert own habits" ON habits
+    FOR INSERT WITH CHECK (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+DROP POLICY IF EXISTS "Users can update own habits" ON habits;
+CREATE POLICY "Users can update own habits" ON habits
+    FOR UPDATE USING (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+DROP POLICY IF EXISTS "Users can delete own habits" ON habits;
+CREATE POLICY "Users can delete own habits" ON habits
+    FOR DELETE USING (
+        id IN (SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid)
+    );
+
+-- Policies for data
 DROP POLICY IF EXISTS "Users can view own data" ON data;
 CREATE POLICY "Users can view own data" ON data
     FOR SELECT USING (
@@ -355,3 +310,230 @@ CREATE POLICY "Users can update own data" ON data
             SELECT id FROM items WHERE user_id = (auth.jwt() ->> 'sub')::uuid
         )
     );
+
+-- Calculated constants for goals
+DROP VIEW IF EXISTS goals_calc CASCADE;
+CREATE VIEW goals_calc WITH (security_invoker = on) AS
+    SELECT
+        items.*,
+        goals.add_to_sum,
+        -- Target change in value
+        (items.target_value - COALESCE(goals.start_value, 0)) AS target_change,
+        -- Initial value
+        COALESCE(goals.start_value, 0) AS start_value,
+        -- Planned daily change to achieve goal
+        (items.target_value - COALESCE(goals.start_value, 0)) / items.duration AS plan_daily_change
+    FROM
+        items JOIN
+        goals ON items.id = goals.id;
+
+-- Calculated constants for habits
+DROP VIEW IF EXISTS habits_calc CASCADE;
+CREATE VIEW habits_calc WITH (security_invoker = on) AS
+    SELECT
+        items.*,
+        habits.negative,
+        habits.interval_type,
+        habits.interval_length,
+        -- Planned daily change to achieve goal
+        items.target_value / habits.interval_length AS plan_daily_change
+    FROM
+        items JOIN
+        habits ON items.id = habits.id;
+
+-- View for goal calculations
+DROP VIEW IF EXISTS goals_days_calc CASCADE;
+CREATE VIEW goals_days_calc WITH (security_invoker = on) AS (
+    WITH q1 AS(
+        SELECT
+            data.id,
+            data.date,
+            data.item_id,
+            data.value,
+            goals_calc.name,
+            1 AS type_id,
+            goals_calc.weight,
+            goals_calc.begin_date,
+            goals_calc.end_date,
+            goals_calc.duration,
+            (goals_calc.end_date - data.date + 1) AS remaining_duration,
+            goals_calc.add_to_sum,
+            goals_calc.allow_overcompletion,
+            goals_calc.start_value,
+            goals_calc.target_value,
+            goals_calc.target_change,
+            -- Planned change from begin_date
+            goals_calc.plan_daily_change * ((data.date - goals_calc.begin_date + 1)::NUMERIC) AS plan_change,
+            -- Actual change from begin_date
+            CASE
+                WHEN goals_calc.add_to_sum THEN
+                    COALESCE(SUM(data.value) OVER w_items, 0)
+                ELSE
+                    COALESCE(last_non_null_value(data.value) OVER w_items - goals_calc.start_value, 0)
+            END AS fact_change
+        FROM
+            data JOIN
+            goals_calc ON data.item_id = goals_calc.id
+        WINDOW w_items AS (PARTITION BY item_id ORDER BY date)
+    )
+    SELECT *,
+        -- Planned value from begin_date
+        start_value + plan_change AS plan_value,
+        -- Actual value from begin_date
+        start_value + fact_change AS fact_value,
+        -- Average change per day from begin_date
+        fact_change / NULLIF(date - begin_date + 1, 0) AS avg_change,
+        -- Remaining change to achieve goal
+        target_change - fact_change AS remaining_change,
+        -- Expected value at deadline
+        (fact_change / NULLIF(date - begin_date + 1, 0)) * (remaining_duration - (value IS NOT NULL)::INTEGER) + fact_change AS expected_value,
+        -- Required daily change to achieve goal
+        (target_change - fact_change) / NULLIF(remaining_duration - (value IS NOT NULL)::INTEGER, 0) AS daily_target_change,
+        -- Goal completion percentage
+        calculate_completion(fact_change, target_change, allow_overcompletion, FALSE) AS completion,
+        -- Current pace percentage
+        CASE
+            WHEN plan_change = 0 THEN 0
+            ELSE calculate_completion(fact_change, plan_change, allow_overcompletion, FALSE)
+        END AS pace
+    FROM q1
+);
+
+-- View for habit calculations
+DROP VIEW IF EXISTS habits_days_calc CASCADE;
+CREATE VIEW habits_days_calc WITH (security_invoker = on) AS (
+    WITH q1 AS(
+        SELECT
+            data.id,
+            data.date,
+            data.item_id,
+            data.value,
+            habits_calc.name,
+            2 AS type_id,
+            habits_calc.weight,
+            habits_calc.begin_date,
+            habits_calc.end_date,
+            habits_calc.duration,
+            (habits_calc.end_date - data.date + 1) AS remaining_duration,
+            habits_calc.allow_overcompletion,
+            habits_calc.negative,
+            -- Target value per period
+            habits_calc.target_value,
+            habits_calc.interval_type,
+            habits_calc.interval_length,
+            -- Actual value adjusted for fractional part
+            COALESCE(get_sum_last_n_days(item_id, date, CEIL(habits_calc.interval_length)::INTEGER) /
+                CEIL(habits_calc.interval_length) * habits_calc.interval_length, 0) AS fact_value,
+            -- Planned change from begin_date
+            --SUM(habits_calc.plan_daily_change) OVER w_items AS plan_change,
+            habits_calc.plan_daily_change * ((data.date - habits_calc.begin_date + 1)::NUMERIC) AS plan_change,
+            -- Actual change from begin_date
+            COALESCE(SUM(data.value) OVER w_items, 0) AS fact_change
+        FROM
+            data JOIN
+            habits_calc ON data.item_id = habits_calc.id
+        WINDOW w_items AS (PARTITION BY item_id ORDER BY date)
+    )
+    SELECT *,
+        -- Average change per day from begin_date
+        fact_change / NULLIF(date - begin_date + 1, 0) AS avg_change,
+        -- Remaining change to achieve goal
+        target_value - fact_value AS remaining_value,
+        -- Required daily change to achieve goal
+        (target_value - fact_value) / (GREATEST(interval_length - (date - begin_date) - 1, 1)) AS daily_target_change,
+        -- Goal completion percentage
+        calculate_completion(fact_value, target_value, allow_overcompletion, negative) AS completion,
+        -- Current pace percentage
+        CASE
+            WHEN plan_change = 0 THEN 0
+            ELSE calculate_completion(fact_change, plan_change, allow_overcompletion, negative)
+        END AS pace
+    FROM q1
+);
+
+-- View for displaying data with calculations
+DROP VIEW IF EXISTS items_days_calc CASCADE;
+CREATE VIEW items_days_calc WITH (security_invoker = on) AS (
+    -- Goals data
+    SELECT
+        date,
+        item_id,
+        value,
+        name,
+        type_id,
+        weight,
+        begin_date,
+        end_date,
+        duration,
+        remaining_duration,
+        add_to_sum,
+        allow_overcompletion,
+        NULL AS negative,          -- Habit-specific
+        start_value,
+        target_value,
+        NULL AS interval_type,     -- Habit-specific
+        NULL AS interval_length,   -- Habit-specific
+        target_change,
+        plan_change,
+        fact_change,
+        plan_value,
+        fact_value,
+        avg_change,
+        remaining_change,
+        expected_value,
+        daily_target_change,
+        completion,
+        pace
+    FROM goals_days_calc
+    UNION ALL
+    -- Habits data
+    SELECT
+        date,
+        item_id,
+        value,
+        name,
+        type_id,
+        weight,
+        begin_date,
+        end_date,
+        duration,
+        remaining_duration,
+        NULL AS add_to_sum,        -- Goal-specific
+        allow_overcompletion,
+        negative,
+        NULL AS start_value,       -- Goal-specific
+        target_value,
+        interval_type,
+        interval_length,
+        NULL AS target_change,     -- Goal-specific
+        plan_change,
+        fact_change,
+        NULL AS plan_value,        -- Goal-specific
+        fact_value,
+        avg_change,
+        remaining_value,
+        NULL AS expected_value,    -- Goal-specific
+        daily_target_change,
+        completion,
+        pace
+    FROM habits_days_calc
+);
+
+-- View for day statistics
+DROP VIEW IF EXISTS day_stats CASCADE;
+CREATE VIEW day_stats WITH (security_invoker = on) AS (
+    SELECT
+    date,
+    SUM(weight * pace) / SUM(weight) AS weighted_pace,
+    SUM(weight * pace) / SUM(weight) - LAG(SUM(weight * pace) / SUM(weight))  OVER (ORDER BY date) AS day_result
+    FROM items_days_calc
+    GROUP BY date
+);
+
+-- DROP VIEW IF EXISTS __temp_view;
+-- CREATE VIEW __temp_view WITH (security_invoker = on) AS (
+--     SELECT
+--         date, value, target_value, interval_length, plan_change, fact_change, fact_value, avg_change, remaining_change,
+--         daily_target_change, completion, pace
+--     FROM items_days_calc
+-- );
